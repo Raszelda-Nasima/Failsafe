@@ -1,0 +1,19 @@
+# .NET build output — no leading slash, so this matches at any depth
+bin/
+obj/
+
+# Visual Studio / Rider local state
+.vs/
+*.user
+.idea/
+
+# Node (only relevant if any client-side tooling gets added later)
+node_modules/
+
+# Secrets — defense in depth alongside User Secrets
+*.env
+.env.local
+
+# OS noise
+.DS_Store
+Thumbs.db
