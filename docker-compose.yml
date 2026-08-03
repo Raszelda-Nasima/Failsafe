@@ -1,0 +1,36 @@
+# docker-compose.yml
+# Containerizes SQL Server and Keycloak together. The API and Blazor app
+# still run locally via `dotnet run` for hot-reload during active
+# development — full containerization is a Sprint 3 (deployment) concern.
+
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: failsafe-sql
+    environment:
+      ACCEPT_EULA: "Y"
+      # Local dev only — never a real secret in production.
+      MSSQL_SA_PASSWORD: "FailsafeD3v!2026"
+    ports:
+      # Host port 1434, not 1433 — avoids colliding with any pre-existing
+      # native SQL Server instance, a lesson carried directly from OpsLens.
+      - "1434:1433"
+    volumes:
+      - failsafe-sql-data:/var/opt/mssql
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:latest
+    container_name: failsafe-keycloak
+    command: start-dev
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: "admin"
+    ports:
+      - "8080:8080"
+    volumes:
+      # Persists realm/client/role/user configuration across restarts.
+      - failsafe-keycloak-data:/opt/keycloak/data
+
+volumes:
+  failsafe-sql-data:
+  failsafe-keycloak-data:
