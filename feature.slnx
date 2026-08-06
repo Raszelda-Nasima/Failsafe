@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Failsafe.API/Failsafe.API.csproj" />
+    <Project Path="src/Failsafe.Application/Failsafe.Application.csproj" />
+    <Project Path="src/Failsafe.Domain/Failsafe.Domain.csproj" />
+    <Project Path="src/Failsafe.Infrastructure/Failsafe.Infrastructure.csproj" />
+    <Project Path="src/Failsafe.Web/Failsafe.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Failsafe.UnitTests/Failsafe.UnitTests.csproj" />
+  </Folder>
+</Solution>
