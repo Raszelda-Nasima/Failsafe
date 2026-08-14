@@ -26,9 +26,16 @@ builder.Services.AddScoped<IIncidentRepository, IncidentRepository>();
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 builder.Services.AddScoped<Failsafe.Application.Providers.ProviderService>();
 builder.Services.AddScoped<Failsafe.Domain.Services.ProviderHealthEvaluator>();
+builder.Services.AddScoped<Failsafe.Application.Providers.FailoverService>();
+builder.Services.AddScoped<Failsafe.Domain.Services.FailoverSelector>();
 builder.Services.AddValidatorsFromAssembly(typeof(Failsafe.Application.Providers.ProviderService).Assembly);
+// Background hosted service that periodically checks provider health
+// and records incidents. Registered as a hosted service so it runs
+// for the lifetime of the application.
+builder.Services.AddHostedService<Failsafe.Infrastructure.HealthChecking.ProviderHealthCheckService>();
 builder.Services.AddExceptionHandler<Failsafe.API.Middleware.GlobalExceptionHandler>();
 builder.Services.AddProblemDetails();
+
 
 // --- Authentication ---
 // Trusts Keycloak as the identity provider. The API never sees a password;
@@ -92,6 +99,7 @@ builder.Services.AddCors(options =>
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+
 
 var app = builder.Build();
 
