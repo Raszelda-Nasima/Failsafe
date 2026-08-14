@@ -4,6 +4,9 @@ using Failsafe.Infrastructure.Persistence.Repositories;
 using FluentValidation;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
 using System.Security.Claims;
 using System.Text.Json;
 
@@ -96,6 +99,23 @@ builder.Services.AddCors(options =>
               .AllowAnyHeader()
               .AllowAnyMethod());
 });
+
+// --- OpenTelemetry ---
+// Instruments the API with distributed tracing and metrics, exported in
+// Prometheus format on a dedicated endpoint. AddAspNetCoreInstrumentation
+// automatically traces every incoming HTTP request; AddHttpClientInstrumentation
+// does the same for any outgoing HTTP calls this API makes.
+builder.Services.AddOpenTelemetry()
+    .ConfigureResource(resource => resource.AddService("Failsafe.API"))
+    .WithTracing(tracing => tracing
+        .AddAspNetCoreInstrumentation()
+        .AddHttpClientInstrumentation())
+    .WithMetrics(metrics => metrics
+        .AddAspNetCoreInstrumentation()
+        .AddHttpClientInstrumentation()
+        .AddRuntimeInstrumentation() // GC, thread pool, memory — genuinely useful signals for a monitoring product to expose about itself
+        .AddPrometheusExporter());
+
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
@@ -118,6 +138,10 @@ app.UseCors("FailsafeWebClient");
 // (what are you allowed to do?).
 app.UseAuthentication();
 app.UseAuthorization();
+// Exposes OpenTelemetry metrics in Prometheus's expected text format at
+// /metrics — this is the endpoint prometheus.yml will be configured to
+// scrape on a regular interval.
+app.MapPrometheusScrapingEndpoint();
 
 app.MapControllers();
 
