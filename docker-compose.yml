@@ -53,5 +53,4 @@ services:
 volumes:
   failsafe-sql-data:
   failsafe-keycloak-data:
-  failsafe-grafana-data: 
-  
+  failsafe-grafana-data:
