@@ -9,14 +9,14 @@ namespace Failsafe.Infrastructure.HealthChecking;
 
 // Runs continuously for the app's lifetime, independent of any HTTP
 // request. Periodically checks every enabled provider, records the result,
-// and opens/resolves Incidents based on the computed status — the actual
+// and opens/resolves Incidents based on the computed status - the actual
 // engine behind the whole monitoring concept.
 public class ProviderHealthCheckService : BackgroundService
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<ProviderHealthCheckService> _logger;
 
-    // A fixed interval for MVP simplicity — a real production system might
+    // A fixed interval for MVP simplicity - a real production system might
     // vary this per provider, but a single global interval is proportionate
     // to this timeline and still fully demonstrates the concept.
     private static readonly TimeSpan CheckInterval = TimeSpan.FromSeconds(15);
@@ -38,7 +38,7 @@ public class ProviderHealthCheckService : BackgroundService
             catch (Exception ex)
             {
                 // A single failed check cycle must never crash the whole
-                // background service — log it and keep running, since the
+                // background service - log it and keep running, since the
                 // next cycle will simply try again.
                 _logger.LogError(ex, "Error during provider health check cycle");
             }
@@ -71,10 +71,18 @@ public class ProviderHealthCheckService : BackgroundService
             var recentResults = await healthChecks.GetRecentByProviderIdAsync(provider.Id, count: 20, ct);
             var status = evaluator.Evaluate(recentResults);
 
+            // Publishes this provider's current status as an OpenTelemetry
+            // metric, so Prometheus/Grafana can visualize it. Without this
+            // call, ProviderMetrics' cache is never updated, and the
+            // failsafe_provider_status gauge simply never appears in
+            // /metrics output - the exact gap that caused Grafana's
+            // dashboard to render empty.
+            ProviderMetrics.RecordStatus(provider.Name, status);
+
             await ReconcileIncidentAsync(provider.Id, status, incidents, ct);
 
             _logger.LogInformation(
-                "Health check: {ProviderName} — {Status} ({ResponseTimeMs}ms, success={IsSuccessful})",
+                "Health check: {ProviderName} - {Status} ({ResponseTimeMs}ms, success={IsSuccessful})",
                 provider.Name, status, result.ResponseTimeMs, result.IsSuccessful);
         }
 
@@ -95,6 +103,13 @@ public class ProviderHealthCheckService : BackgroundService
         {
             var incident = Incident.Open(providerId, $"Provider health degraded to {status}");
             await incidents.AddAsync(incident, ct);
+
+            // Publishes the incident-opened counter metric. This is what
+            // Grafana's "Total Incidents Opened" panel actually reads -
+            // without this call, that panel would stay at zero forever,
+            // even while incidents are genuinely being created in the
+            // database.
+            ProviderMetrics.RecordIncidentOpened();
         }
         else if (status == Domain.Enums.ProviderStatus.Healthy && openIncident is not null)
         {
@@ -102,7 +117,7 @@ public class ProviderHealthCheckService : BackgroundService
         }
     }
 
-    // Simulated health check — this is explicitly NOT calling real
+    // Simulated health check - this is explicitly NOT calling real
     // Visa/Mastercard/PayPal APIs (deliberately out of scope, see the
     // project plan). Randomized to produce a believable mix of successes,
     // slow responses, and occasional failures for demo purposes.
