@@ -39,13 +39,26 @@ public class PaymentProvider
             CostPerTransactionCents = costPerTransactionCents,
             Enabled = true
         };
-    }
+    } // <-- Register's closing brace, correctly placed here, not after ChangeCost
 
     // Each independent concern gets its own method, same discipline as
     // Service.ChangeOwnerTeam in OpsLens — no single invariant ties
     // Priority and CostPerTransactionCents together, so they're not
     // bundled into one "UpdateDetails" call.
     public void ChangePriority(int priority) => Priority = priority;
+
+    // Cost is a contractual, negotiated rate — editable to reflect real
+    // contract renegotiations, but every change is logged at the
+    // Application layer (see ProviderService.UpdateAsync) so there's a
+    // defensible answer to "who changed this and when," without needing
+    // a full audit-history table for a single field.
+    public void ChangeCost(int costPerTransactionCents)
+    {
+        if (costPerTransactionCents < 0)
+            throw new ArgumentException("Cost cannot be negative.", nameof(costPerTransactionCents));
+
+        CostPerTransactionCents = costPerTransactionCents;
+    }
 
     public void Disable() => Enabled = false;
     public void Enable() => Enabled = true;
