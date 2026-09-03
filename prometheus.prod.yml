@@ -1,0 +1,6 @@
+global:
+  scrape_interval: 15s
+scrape_configs:
+  - job_name: "failsafe-api"
+    static_configs:
+      - targets: ["failsafe-api:5171"] # container service name, not host.docker.internal
