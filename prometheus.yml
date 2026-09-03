@@ -1,15 +1,8 @@
-# prometheus.yml
-# Tells Prometheus where to find metrics and how often to collect them.
 global:
   scrape_interval: 15s
 
 scrape_configs:
   - job_name: "failsafe-api"
-    # host.docker.internal lets a container reach a process running
-    # directly on your host machine (the API, running via dotnet run,
-    # not containerized) — the correct address from inside Docker's
-    # network, since "localhost" inside a container means the container
-    # itself, not your host machine.
     static_configs:
+      # Fixed HTTP port 5171, matching the explicit UseUrls binding above.
       - targets: ["host.docker.internal:5171"]
-  
