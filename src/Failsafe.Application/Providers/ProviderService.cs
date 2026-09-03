@@ -5,9 +5,15 @@ using Failsafe.Application.Providers.DTOs;
 using Failsafe.Domain.Entities;
 using Failsafe.Domain.Enums;
 using Failsafe.Domain.Services;
+using Microsoft.Extensions.Logging;
 
 namespace Failsafe.Application.Providers;
 
+/// <summary>
+/// Orchestrates Payment Provider use cases: converting between the raw
+/// DTOs that cross the HTTP boundary and the rich PaymentProvider entity
+/// that enforces the actual business rules.
+/// </summary>
 public class ProviderService
 {
     private readonly IPaymentProviderRepository _providers;
@@ -15,21 +21,29 @@ public class ProviderService
     private readonly IUnitOfWork _unitOfWork;
     private readonly IValidator<CreateProviderRequest> _validator;
     private readonly ProviderHealthEvaluator _healthEvaluator;
+    private readonly ILogger<ProviderService> _logger;
 
     public ProviderService(
         IPaymentProviderRepository providers,
         IHealthCheckResultRepository healthChecks,
         IUnitOfWork unitOfWork,
         IValidator<CreateProviderRequest> validator,
-        ProviderHealthEvaluator healthEvaluator)
+        ProviderHealthEvaluator healthEvaluator,
+        ILogger<ProviderService> logger)
     {
         _providers = providers;
         _healthChecks = healthChecks;
         _unitOfWork = unitOfWork;
         _validator = validator;
         _healthEvaluator = healthEvaluator;
+        _logger = logger;
     }
 
+    /// <summary>
+    /// Registers a new payment provider. Converts the raw request DTO into
+    /// a real PaymentProvider entity via its factory method, persists it,
+    /// and returns a response DTO — the entity itself never leaves this method.
+    /// </summary>
     public async Task<ProviderResponse> RegisterAsync(CreateProviderRequest request, CancellationToken ct = default)
     {
         var validationResult = await _validator.ValidateAsync(request, ct);
@@ -45,6 +59,11 @@ public class ProviderService
         return await ToResponseAsync(provider, ct);
     }
 
+    /// <summary>
+    /// Returns every registered provider, including disabled ones — used
+    /// by the Admin management page, which needs to see and re-enable
+    /// disabled providers, not just the active routing pool.
+    /// </summary>
     public async Task<IReadOnlyList<ProviderResponse>> GetAllAsync(CancellationToken ct = default)
     {
         var providers = await _providers.GetAllAsync(ct);
@@ -58,9 +77,60 @@ public class ProviderService
         return responses;
     }
 
-    // Centralizes the entity-to-DTO mapping AND the live status calculation
-    // in one place — every caller gets a consistently computed Status,
-    // never a stale or forgotten one.
+    /// <summary>
+    /// Updates a provider's mutable routing configuration (Priority, Cost,
+    /// Enabled). Each field change still goes through the entity's own
+    /// dedicated methods rather than direct property assignment, and a
+    /// cost change is logged before it's applied — CostPerTransactionCents
+    /// represents a negotiated contractual rate, so a lightweight audit
+    /// trail via structured logging is worth the one extra log line, even
+    /// without a dedicated history table.
+    /// </summary>
+    public async Task<ProviderResponse> UpdateAsync(Guid id, UpdateProviderRequest request, CancellationToken ct = default)
+    {
+        var provider = await _providers.GetByIdAsync(id, ct)
+            ?? throw new NotFoundException($"Provider {id} does not exist.");
+
+        // Logged before ChangeCost runs, while provider.CostPerTransactionCents
+        // still holds the OLD value — capturing both old and new in one line.
+        if (provider.CostPerTransactionCents != request.CostPerTransactionCents)
+        {
+            _logger.LogInformation(
+                "Provider {ProviderName} cost changed from {OldCost} to {NewCost} cents",
+                provider.Name, provider.CostPerTransactionCents, request.CostPerTransactionCents);
+        }
+
+        provider.ChangePriority(request.Priority);
+        provider.ChangeCost(request.CostPerTransactionCents);
+
+        if (request.Enabled) provider.Enable();
+        else provider.Disable();
+
+        await _unitOfWork.SaveChangesAsync(ct);
+        return await ToResponseAsync(provider, ct);
+    }
+
+    /// <summary>
+    /// Disables a provider, removing it from routing consideration without
+    /// a hard delete — a provider with any health check history has real
+    /// foreign-key-referenced rows in HealthCheckResult/Incident, so a true
+    /// delete would either fail or destroy audit history.
+    /// </summary>
+    public async Task DisableAsync(Guid id, CancellationToken ct = default)
+    {
+        var provider = await _providers.GetByIdAsync(id, ct)
+            ?? throw new NotFoundException($"Provider {id} does not exist.");
+
+        provider.Disable();
+        await _unitOfWork.SaveChangesAsync(ct);
+    }
+
+    /// <summary>
+    /// Converts a PaymentProvider entity into its public-facing DTO shape,
+    /// including its live computed status. Kept as a single private method
+    /// so there's exactly one place defining "what a provider looks like
+    /// to the outside world" — every method above reuses it.
+    /// </summary>
     private async Task<ProviderResponse> ToResponseAsync(PaymentProvider provider, CancellationToken ct)
     {
         var recentResults = await _healthChecks.GetRecentByProviderIdAsync(provider.Id, count: 20, ct);

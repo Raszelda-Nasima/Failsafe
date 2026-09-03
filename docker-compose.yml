@@ -54,3 +54,7 @@ volumes:
   failsafe-sql-data:
   failsafe-keycloak-data:
   failsafe-grafana-data:
+  # Host bind mounts for cadvisor should be declared per-service (above).
+  # Only named volumes belong here.
+
+

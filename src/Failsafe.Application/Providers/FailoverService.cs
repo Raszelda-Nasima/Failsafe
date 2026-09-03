@@ -1,11 +1,16 @@
 ﻿using Failsafe.Application.Interfaces;
+using Failsafe.Domain.Enums;
 using Failsafe.Domain.Services;
 
 namespace Failsafe.Application.Providers;
 
-// Orchestrates the failover use case: fetches enabled providers and their
-// recent health data, builds the ProviderCandidate list FailoverSelector
-// needs, and returns the chosen provider (or null if none are available).
+// Orchestrates the failover use case for a specific payment network. A
+// card network (Visa, Mastercard, etc.) is fixed by the customer's card
+// and cannot be substituted — this service only ever selects among
+// providers of the SAME ProviderType as the request, never across
+// networks. Real-world redundancy comes from registering multiple
+// providers of the same type (e.g. two independent Visa processors), not
+// from treating different payment methods as interchangeable fallbacks.
 public class FailoverService
 {
     private readonly IPaymentProviderRepository _providers;
@@ -25,21 +30,24 @@ public class FailoverService
         _selector = selector;
     }
 
-    public async Task<Domain.Entities.PaymentProvider?> SelectActiveProviderAsync(CancellationToken ct = default)
+    public async Task<Domain.Entities.PaymentProvider?> SelectActiveProviderAsync(
+        ProviderType requestedType, CancellationToken ct = default)
     {
-        // Already filtered to Enabled and ordered by Priority — the
-        // repository, not this method, owns that query concern.
         var enabledProviders = await _providers.GetEnabledOrderedByPriorityAsync(ct);
 
+        // Filter to only providers capable of handling this specific
+        // network — this is the correction that makes the system's
+        // routing behavior match how card networks actually work.
+        var matchingProviders = enabledProviders.Where(p => p.ProviderType == requestedType).ToList();
+
         var candidates = new List<ProviderCandidate>();
-        foreach (var provider in enabledProviders)
+        foreach (var provider in matchingProviders)
         {
             var recentResults = await _healthChecks.GetRecentByProviderIdAsync(provider.Id, count: 20, ct);
             var status = _healthEvaluator.Evaluate(recentResults);
             candidates.Add(new ProviderCandidate(provider, status));
         }
 
-        // The actual decision — pure, testable Domain logic — happens here.
         return _selector.SelectProvider(candidates);
     }
 }
