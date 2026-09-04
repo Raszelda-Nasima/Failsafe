@@ -19,7 +19,8 @@ public class ProviderService
     private readonly IPaymentProviderRepository _providers;
     private readonly IHealthCheckResultRepository _healthChecks;
     private readonly IUnitOfWork _unitOfWork;
-    private readonly IValidator<CreateProviderRequest> _validator;
+    private readonly IValidator<CreateProviderRequest> _createValidator;
+    private readonly IValidator<UpdateProviderRequest> _updateValidator;
     private readonly ProviderHealthEvaluator _healthEvaluator;
     private readonly ILogger<ProviderService> _logger;
 
@@ -27,14 +28,16 @@ public class ProviderService
         IPaymentProviderRepository providers,
         IHealthCheckResultRepository healthChecks,
         IUnitOfWork unitOfWork,
-        IValidator<CreateProviderRequest> validator,
+        IValidator<CreateProviderRequest> createValidator,
+        IValidator<UpdateProviderRequest> updateValidator,
         ProviderHealthEvaluator healthEvaluator,
         ILogger<ProviderService> logger)
     {
         _providers = providers;
         _healthChecks = healthChecks;
         _unitOfWork = unitOfWork;
-        _validator = validator;
+        _createValidator = createValidator;
+        _updateValidator = updateValidator;
         _healthEvaluator = healthEvaluator;
         _logger = logger;
     }
@@ -46,7 +49,7 @@ public class ProviderService
     /// </summary>
     public async Task<ProviderResponse> RegisterAsync(CreateProviderRequest request, CancellationToken ct = default)
     {
-        var validationResult = await _validator.ValidateAsync(request, ct);
+        var validationResult = await _createValidator.ValidateAsync(request, ct);
         if (!validationResult.IsValid)
             throw new FluentValidation.ValidationException(validationResult.Errors);
 
@@ -67,10 +70,6 @@ public class ProviderService
     public async Task<IReadOnlyList<ProviderResponse>> GetAllAsync(CancellationToken ct = default)
     {
         var providers = await _providers.GetAllAsync(ct);
-        // Sequentially awaited rather than Task.WhenAll — at MVP scale
-        // (a handful of providers) the simplicity outweighs the marginal
-        // parallelism gain, and it avoids surprising concurrent-DbContext
-        // access, since DbContext is not thread-safe.
         var responses = new List<ProviderResponse>();
         foreach (var provider in providers)
             responses.Add(await ToResponseAsync(provider, ct));
@@ -79,20 +78,20 @@ public class ProviderService
 
     /// <summary>
     /// Updates a provider's mutable routing configuration (Priority, Cost,
-    /// Enabled). Each field change still goes through the entity's own
-    /// dedicated methods rather than direct property assignment, and a
-    /// cost change is logged before it's applied — CostPerTransactionCents
-    /// represents a negotiated contractual rate, so a lightweight audit
-    /// trail via structured logging is worth the one extra log line, even
-    /// without a dedicated history table.
+    /// Enabled). Validated first, then each field change goes through the
+    /// entity's own dedicated methods. A cost change is logged before it's
+    /// applied, since CostPerTransactionCents represents a negotiated
+    /// contractual rate worth a lightweight audit trail.
     /// </summary>
     public async Task<ProviderResponse> UpdateAsync(Guid id, UpdateProviderRequest request, CancellationToken ct = default)
     {
+        var validationResult = await _updateValidator.ValidateAsync(request, ct);
+        if (!validationResult.IsValid)
+            throw new FluentValidation.ValidationException(validationResult.Errors);
+
         var provider = await _providers.GetByIdAsync(id, ct)
             ?? throw new NotFoundException($"Provider {id} does not exist.");
 
-        // Logged before ChangeCost runs, while provider.CostPerTransactionCents
-        // still holds the OLD value — capturing both old and new in one line.
         if (provider.CostPerTransactionCents != request.CostPerTransactionCents)
         {
             _logger.LogInformation(
@@ -112,9 +111,7 @@ public class ProviderService
 
     /// <summary>
     /// Disables a provider, removing it from routing consideration without
-    /// a hard delete — a provider with any health check history has real
-    /// foreign-key-referenced rows in HealthCheckResult/Incident, so a true
-    /// delete would either fail or destroy audit history.
+    /// a hard delete.
     /// </summary>
     public async Task DisableAsync(Guid id, CancellationToken ct = default)
     {
@@ -127,9 +124,7 @@ public class ProviderService
 
     /// <summary>
     /// Converts a PaymentProvider entity into its public-facing DTO shape,
-    /// including its live computed status. Kept as a single private method
-    /// so there's exactly one place defining "what a provider looks like
-    /// to the outside world" — every method above reuses it.
+    /// including its live computed status.
     /// </summary>
     private async Task<ProviderResponse> ToResponseAsync(PaymentProvider provider, CancellationToken ct)
     {
