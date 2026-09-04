@@ -43,9 +43,7 @@ public class ProviderService
     }
 
     /// <summary>
-    /// Registers a new payment provider. Converts the raw request DTO into
-    /// a real PaymentProvider entity via its factory method, persists it,
-    /// and returns a response DTO — the entity itself never leaves this method.
+    /// Registers a new payment provider.
     /// </summary>
     public async Task<ProviderResponse> RegisterAsync(CreateProviderRequest request, CancellationToken ct = default)
     {
@@ -63,9 +61,7 @@ public class ProviderService
     }
 
     /// <summary>
-    /// Returns every registered provider, including disabled ones — used
-    /// by the Admin management page, which needs to see and re-enable
-    /// disabled providers, not just the active routing pool.
+    /// Returns every registered provider, including disabled ones.
     /// </summary>
     public async Task<IReadOnlyList<ProviderResponse>> GetAllAsync(CancellationToken ct = default)
     {
@@ -77,11 +73,20 @@ public class ProviderService
     }
 
     /// <summary>
-    /// Updates a provider's mutable routing configuration (Priority, Cost,
-    /// Enabled). Validated first, then each field change goes through the
-    /// entity's own dedicated methods. A cost change is logged before it's
-    /// applied, since CostPerTransactionCents represents a negotiated
-    /// contractual rate worth a lightweight audit trail.
+    /// Returns a single provider by Id, or throws NotFoundException (→ 404
+    /// via GlobalExceptionHandler) if it doesn't exist. Used by the
+    /// frontend's edit form to fetch current values before editing.
+    /// </summary>
+    public async Task<ProviderResponse> GetByIdAsync(Guid id, CancellationToken ct = default)
+    {
+        var provider = await _providers.GetByIdAsync(id, ct)
+            ?? throw new NotFoundException($"Provider {id} does not exist.");
+
+        return await ToResponseAsync(provider, ct);
+    }
+
+    /// <summary>
+    /// Updates a provider's mutable routing configuration.
     /// </summary>
     public async Task<ProviderResponse> UpdateAsync(Guid id, UpdateProviderRequest request, CancellationToken ct = default)
     {
