@@ -191,7 +191,6 @@ if (app.Environment.IsDevelopment())
 
 app.UseCors("FailsafeWebClient");
 
-app.UseHttpsRedirection();
 // Order matters: Authentication (who are you?) before Authorization
 // (what are you allowed to do?).
 app.UseAuthentication();
