@@ -1,4 +1,5 @@
 ﻿using Failsafe.Application.Interfaces;
+using Failsafe.API.Controllers;
 using Failsafe.Application.Providers;
 using Failsafe.Application.Providers.DTOs;
 using Failsafe.Domain.Enums;
