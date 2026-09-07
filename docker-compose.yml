@@ -9,8 +9,8 @@ services:
     container_name: failsafe-sql
     environment:
       ACCEPT_EULA: "Y"
-      # Local dev only — never a real secret in production.
-      MSSQL_SA_PASSWORD: "FailsafeD3v!2026"
+      # Local dev only — read password from .env
+      MSSQL_SA_PASSWORD: "${SQL_SA_PASSWORD}"
     ports:
       # Host port 1434, not 1433 — avoids colliding with any pre-existing
       # native SQL Server instance, a lesson carried directly from OpsLens.
@@ -24,7 +24,8 @@ services:
     command: start-dev
     environment:
       KEYCLOAK_ADMIN: admin
-      KEYCLOAK_ADMIN_PASSWORD: "admin"
+      # Local dev only — read password from .env
+      KEYCLOAK_ADMIN_PASSWORD: "${KEYCLOAK_ADMIN_PASSWORD}"
     ports:
       - "8080:8080"
     volumes:
@@ -43,7 +44,8 @@ services:
     image: grafana/grafana:latest
     container_name: failsafe-grafana
     environment:
-      GF_SECURITY_ADMIN_PASSWORD: "admin"
+      # Local dev only — read password from .env
+      GF_SECURITY_ADMIN_PASSWORD: "${GRAFANA_ADMIN_PASSWORD}"
     ports:
       - "3000:3000"
     volumes:
