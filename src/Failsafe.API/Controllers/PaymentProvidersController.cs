@@ -97,6 +97,30 @@ public class PaymentProvidersController : ControllerBase
 
         return Ok(new { provider.Id, provider.Name, provider.ProviderType });
     }
+    /// <summary>
+    /// Groups enabled providers by payment network and reports whether real
+    /// failover redundancy exists for each — a network with only one enabled
+    /// provider has no failover capability regardless of that provider's
+    /// health, and the system should say so explicitly rather than implying
+    /// blanket redundancy it can't actually provide.
+    /// </summary>
+    [HttpGet("redundancy")]
+    public async Task<IActionResult> GetRedundancyStatus(CancellationToken ct)
+    {
+        var providers = await _providerService.GetAllAsync(ct);
+
+        var byNetwork = providers
+            .Where(p => p.Enabled)
+            .GroupBy(p => p.ProviderType)
+            .Select(g => new
+            {
+                Network = g.Key,
+                ProviderCount = g.Count(),
+                HasRedundancy = g.Count() > 1
+            });
+
+        return Ok(byNetwork);
+    }
 
     /// <summary>
     /// DEMO/TESTING ONLY — injects a burst of synthetic failed health
