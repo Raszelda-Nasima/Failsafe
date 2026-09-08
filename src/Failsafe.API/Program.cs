@@ -34,6 +34,7 @@ builder.Services.AddScoped<IIncidentRepository, IncidentRepository>();
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 builder.Services.AddScoped<Failsafe.Application.Providers.ProviderService>();
 builder.Services.AddScoped<Failsafe.Domain.Services.ProviderHealthEvaluator>();
+builder.Services.AddScoped<Failsafe.Domain.Services.ProviderHealthScoreCalculator>();
 builder.Services.AddScoped<Failsafe.Application.Providers.FailoverService>();
 builder.Services.AddScoped<Failsafe.Domain.Services.FailoverSelector>();
 builder.Services.AddValidatorsFromAssembly(typeof(Failsafe.Application.Providers.ProviderService).Assembly);
