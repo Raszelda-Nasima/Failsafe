@@ -1,0 +1,619 @@
+﻿/* ─── Font ────────────────────────────────────────────────────────────── */
+body, button, input, select, textarea {
+    font-family: 'Arimo', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+/* ─── Color tokens — ported from the Finloop design kit's exact palette ── */
+:root {
+    /* Light theme (default, matching the design kit) */
+    --fs-bg: #f7f8fc;
+    --fs-surface: #ffffff;
+    --fs-card: #ffffff;
+    --fs-border: #e8e9f2;
+    --fs-text: #1a1a1a;
+    --fs-text-dim: #666666;
+    --fs-text-muted: #a0a0a0;
+    --fs-primary: #6b84ff;
+    --fs-primary-dark: #442fd6;
+    --fs-primary-bg: #e4dcff;
+    --fs-healthy: #0e8d5b;
+    --fs-healthy-bg: #e9f9ef;
+    --fs-warning: #e2a000;
+    --fs-warning-bg: #fff8e6;
+    --fs-offline: #c62828;
+    --fs-offline-bg: #ffecec;
+    --fs-sidebar: #ffffff;
+    --fs-sidebar-border: #e8e9f2;
+}
+
+/* Dark theme — same accent identity, inverted surfaces */
+.dark {
+    --fs-bg: #0d0e14;
+    --fs-surface: #14151d;
+    --fs-card: #14151d;
+    --fs-border: #23242e;
+    --fs-text: #e8e9f2;
+    --fs-text-dim: #9a9bab;
+    --fs-text-muted: #5c5d6e;
+    --fs-primary: #8b9dff;
+    --fs-primary-dark: #6b84ff;
+    --fs-primary-bg: #1e2140;
+    --fs-healthy: #34c084;
+    --fs-healthy-bg: #0f2419;
+    --fs-warning: #f4b400;
+    --fs-warning-bg: #241d00;
+    --fs-offline: #ef5350;
+    --fs-offline-bg: #260c0c;
+    --fs-sidebar: #14151d;
+    --fs-sidebar-border: #23242e;
+}
+
+body {
+    background: var(--fs-bg);
+    color: var(--fs-text);
+    margin: 0;
+}
+
+/* ─── Layout ─────────────────────────────────────────────────────────── */
+.fs-shell {
+    display: flex;
+    height: 100vh;
+}
+
+.fs-sidebar {
+    display: flex;
+    flex-direction: column;
+    width: 15rem;
+    flex-shrink: 0;
+    border-right: 1px solid var(--fs-sidebar-border);
+    background: var(--fs-sidebar);
+}
+
+.fs-shell.collapsed .fs-sidebar {
+    width: 4.5rem;
+}
+
+.fs-main {
+    flex: 1;
+    overflow-y: auto;
+}
+
+.fs-logo {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    padding: 1.25rem;
+    font-size: 15px;
+    font-weight: 700;
+}
+
+.fs-collapse-btn {
+    position: absolute;
+    right: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: var(--fs-text-muted);
+    cursor: pointer;
+}
+
+.fs-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 0.5rem 0.75rem;
+    flex: 1;
+}
+
+.fs-nav-item {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    padding: 0.55rem 0.85rem;
+    border-radius: 8px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--fs-text-dim);
+    text-decoration: none;
+}
+
+    .fs-nav-item.active {
+        color: var(--fs-primary-dark);
+        background: var(--fs-primary-bg);
+    }
+
+    .fs-nav-item:hover:not(.active) {
+        background: var(--fs-bg);
+    }
+
+.fs-shell.collapsed .fs-nav-item {
+    justify-content: center;
+}
+
+.fs-sidebar-bottom {
+    padding: 0.75rem;
+    border-top: 1px solid var(--fs-sidebar-border);
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    position: relative;
+}
+
+.fs-theme-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    padding: 0.5rem 0.85rem;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    color: var(--fs-text-dim);
+    background: none;
+    border: none;
+    cursor: pointer;
+    width: 100%;
+    text-align: left;
+}
+
+    .fs-theme-toggle:hover {
+        background: var(--fs-bg);
+    }
+
+.fs-user-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    padding: 0.5rem 0.6rem;
+    border-radius: 8px;
+    width: 100%;
+    background: none;
+    border: none;
+    cursor: pointer;
+}
+
+    .fs-user-btn.open {
+        background: var(--fs-primary-bg);
+    }
+
+.fs-avatar {
+    width: 1.9rem;
+    height: 1.9rem;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    font-weight: 700;
+    background: var(--fs-primary);
+    color: #fff;
+    flex-shrink: 0;
+}
+
+.fs-user-name {
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.fs-user-role {
+    font-size: 0.7rem;
+    color: var(--fs-text-muted);
+}
+
+.fs-dropdown {
+    position: absolute;
+    bottom: 100%;
+    left: 0.75rem;
+    right: 0.75rem;
+    margin-bottom: 4px;
+    border-radius: 10px;
+    border: 1px solid var(--fs-border);
+    background: var(--fs-card);
+    box-shadow: 0 12px 32px rgba(0,0,0,0.15);
+    overflow: hidden;
+    z-index: 50;
+}
+
+.fs-dropdown-header {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--fs-border);
+}
+
+.fs-dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0.6rem 1rem;
+    font-size: 0.875rem;
+    background: none;
+    border: none;
+    cursor: pointer;
+    text-align: left;
+    color: var(--fs-offline);
+    text-decoration: none;
+}
+
+    .fs-dropdown-item:hover {
+        background: var(--fs-bg);
+    }
+
+/* ─── Page header (NEW — title/welcome + search + actions, per page) ──── */
+.fs-page {
+    padding: 1.75rem 2rem;
+}
+
+.fs-page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.fs-page-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin: 0;
+}
+
+.fs-page-subtitle {
+    font-size: 0.85rem;
+    color: var(--fs-text-dim);
+    margin: 0.2rem 0 0 0;
+}
+
+.fs-page-actions {
+    display: flex;
+    gap: 0.6rem;
+    align-items: center;
+}
+
+.fs-search {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: var(--fs-surface);
+    border: 1px solid var(--fs-border);
+    border-radius: 999px;
+    padding: 0.5rem 1rem;
+    font-size: 0.85rem;
+    color: var(--fs-text-dim);
+    min-width: 14rem;
+}
+
+    .fs-search input {
+        border: none;
+        background: none;
+        outline: none;
+        color: var(--fs-text);
+        font-size: 0.85rem;
+        width: 100%;
+    }
+
+/* ─── Buttons — pill-shaped, per the design kit ─────────────────────────── */
+.fs-btn {
+    border-radius: 999px;
+    padding: 0.55rem 1.2rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid transparent;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.fs-btn-primary {
+    background: var(--fs-primary);
+    color: #fff;
+}
+
+.fs-btn-secondary {
+    background: var(--fs-surface);
+    color: var(--fs-text);
+    border-color: var(--fs-border);
+}
+
+.fs-btn-danger {
+    background: var(--fs-offline-bg);
+    color: var(--fs-offline);
+    border-color: var(--fs-offline);
+}
+
+.fs-btn-success {
+    background: var(--fs-healthy-bg);
+    color: var(--fs-healthy);
+    border-color: var(--fs-healthy);
+}
+
+.fs-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.fs-select {
+    background: var(--fs-surface);
+    border: 1px solid var(--fs-border);
+    color: var(--fs-text);
+    border-radius: 999px;
+    padding: 0.5rem 1rem;
+    font-size: 0.85rem;
+}
+
+/* ─── Cards, stat cards, badges ──────────────────────────────────────── */
+.fs-card {
+    background: var(--fs-card);
+    border: 1px solid var(--fs-border);
+    border-radius: 14px;
+    padding: 1.25rem;
+}
+
+.fs-stat-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.fs-stat-icon {
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 0.6rem;
+}
+
+.fs-stat-label {
+    font-size: 0.75rem;
+    color: var(--fs-text-dim);
+    margin-bottom: 0.3rem;
+}
+
+.fs-stat-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+}
+
+.fs-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.25rem 0.7rem;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 600;
+}
+
+.fs-badge-healthy {
+    background: var(--fs-healthy-bg);
+    color: var(--fs-healthy);
+}
+
+.fs-badge-warning {
+    background: var(--fs-warning-bg);
+    color: var(--fs-warning);
+}
+
+.fs-badge-offline {
+    background: var(--fs-offline-bg);
+    color: var(--fs-offline);
+}
+
+/* ─── Tables ─────────────────────────────────────────────────────────── */
+.fs-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+    .fs-table th {
+        text-align: left;
+        font-size: 0.7rem;
+        font-weight: 600;
+        color: var(--fs-text-muted);
+        text-transform: uppercase;
+        padding: 0.6rem 1rem;
+        border-bottom: 1px solid var(--fs-border);
+    }
+
+    .fs-table td {
+        padding: 0.85rem 1rem;
+        border-bottom: 1px solid var(--fs-border);
+        font-size: 0.85rem;
+    }
+
+    .fs-table tr:last-child td {
+        border-bottom: none;
+    }
+
+.fs-pagination {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem;
+    font-size: 0.8rem;
+    color: var(--fs-text-dim);
+}
+/* ─── Dashboard grid layout ──────────────────────────────────────────── */
+.fs-dashboard-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 1.25rem;
+    align-items: start;
+}
+
+.fs-section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+}
+
+.fs-section-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+}
+
+.fs-link {
+    font-size: 0.8rem;
+    color: var(--fs-primary);
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.fs-provider-cards {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.85rem;
+}
+
+.fs-provider-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.fs-provider-card-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+}
+
+.fs-provider-name {
+    font-weight: 700;
+    font-size: 0.9rem;
+}
+
+.fs-provider-network {
+    font-size: 0.75rem;
+    color: var(--fs-text-dim);
+}
+
+.fs-provider-meta {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.75rem;
+    color: var(--fs-text-muted);
+    padding-top: 0.4rem;
+    border-top: 1px solid var(--fs-border);
+}
+
+.fs-incident-item {
+    padding: 0.85rem 0;
+    border-bottom: 1px solid var(--fs-border);
+}
+
+    .fs-incident-item:last-child {
+        border-bottom: none;
+    }
+
+.fs-incident-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.25rem;
+}
+
+.fs-incident-provider {
+    font-weight: 700;
+    font-size: 0.85rem;
+}
+
+.fs-incident-reason {
+    font-size: 0.78rem;
+    color: var(--fs-text-dim);
+    margin-bottom: 0.2rem;
+}
+
+.fs-incident-date {
+    font-size: 0.72rem;
+    color: var(--fs-text-muted);
+}
+
+/* ─── Failover demo widget ───────────────────────────────────────────── */
+.fs-demo-widget {
+    margin: 0 0 1.5rem 0;
+    padding: 1.5rem;
+}
+
+.fs-demo-controls {
+    display: flex;
+    gap: 0.6rem;
+    align-items: center;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+}
+
+.fs-route-result {
+    padding: 1rem;
+    border-radius: 10px;
+    border: 1px solid var(--fs-border);
+}
+
+.fs-route-selected {
+    font-size: 1.05rem;
+    font-weight: 700;
+    margin-bottom: 0.75rem;
+}
+
+.fs-candidate-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.45rem 0;
+    font-size: 0.85rem;
+    border-bottom: 1px solid var(--fs-border);
+}
+
+    .fs-candidate-row:last-child {
+        border-bottom: none;
+    }
+
+    .fs-candidate-row.selected {
+        font-weight: 700;
+    }
+
+.fs-candidate-skip {
+    color: var(--fs-text-muted);
+    font-size: 0.72rem;
+}
+
+/* ─── Top bar (NEW — persistent greeting + search + profile) ───────────── */
+.fs-topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 2rem;
+    border-bottom: 1px solid var(--fs-border);
+    background: var(--fs-surface);
+    position: relative;
+}
+
+.fs-topbar-greeting {
+    font-size: 1.1rem;
+    font-weight: 700;
+}
+
+.fs-topbar-subtitle {
+    font-size: 0.8rem;
+    color: var(--fs-text-dim);
+}
+
+.fs-topbar-right {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    position: relative;
+}
+
+.fs-dropdown-topbar {
+    top: 100%;
+    bottom: auto;
+    left: auto;
+    right: 0;
+    margin-top: 6px;
+    width: 12rem;
+}

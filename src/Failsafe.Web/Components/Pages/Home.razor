@@ -1,7 +1,37 @@
 ﻿@page "/"
 
-<PageTitle>Home</PageTitle>
+<PageTitle>Failsafe</PageTitle>
 
-<h1>Hello, world!</h1>
+<AuthorizeView>
+    <Authorized>
+        @{
+            NavigationManager.NavigateTo("/dashboard", replace: true);
+        }
+    </Authorized>
+    <NotAuthorized>
+        <div style="height:100vh; display:flex; align-items:center; justify-content:center; background:var(--fs-bg);">
+            <div style="width:100%; max-width:24rem; display:flex; flex-direction:column; gap:2rem;">
+                <div style="display:flex; flex-direction:column; align-items:center; gap:0.75rem; text-align:center;">
+                    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--fs-accent)" stroke-width="2">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                    </svg>
+                    <h1 style="font-size:1.5rem; font-weight:600; color:var(--fs-text); margin:0;">Failsafe</h1>
+                </div>
+                <div style="background:var(--fs-card); border:1px solid var(--fs-border); border-radius:0.375rem; padding:1.5rem; display:flex; flex-direction:column; gap:0.75rem;">
+                    <a href="/login" data-enhance="false"
+                       style="width:100%; padding:0.65rem 0; border-radius:0.25rem; font-size:0.875rem; font-weight:600;
+                        background:var(--fs-accent); color:#fff; text-align:center; text-decoration:none; display:block;">
+                        Log In
+                    </a>
+                    <p style="font-size:0.75rem; text-align:center; color:var(--fs-text-muted); margin:0.25rem 0 0 0;">
+                        Secured via Keycloak SSO
+                    </p>
+                </div>
+            </div>
+        </div>
+    </NotAuthorized>
+</AuthorizeView>
 
-Welcome to your new app.
+@code {
+    [Inject] private NavigationManager NavigationManager { get; set; } = default!;
+}

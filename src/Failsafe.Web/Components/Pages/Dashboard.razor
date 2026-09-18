@@ -1,0 +1,124 @@
+@page "/dashboard"
+@attribute [Authorize]
+@inject Failsafe.Web.Services.FailsafeApiClient Api
+
+<PageTitle>Dashboard</PageTitle>
+
+<div class="fs-page">
+    <div class="fs-page-header">
+        <div>
+            <h1 class="fs-page-title">Dashboard</h1>
+            <p class="fs-page-subtitle">Live payment provider health and failover status</p>
+        </div>
+    </div>
+
+    @if (_loading)
+    {
+        <p style="color:var(--fs-text-dim);">Loading...</p>
+    }
+    else
+    {
+        <div class="fs-stat-grid">
+            <div class="fs-card">
+                <div class="fs-stat-label">Active Providers</div>
+                <div class="fs-stat-value" style="color:var(--fs-healthy);">@_providers.Count(p => p.Enabled)</div>
+            </div>
+            <div class="fs-card">
+                <div class="fs-stat-label">Open Incidents</div>
+                <div class="fs-stat-value" style="color:var(--fs-warning);">@_incidents.Count(i => i.IsOpen)</div>
+            </div>
+            <div class="fs-card">
+                <div class="fs-stat-label">Providers Offline</div>
+                <div class="fs-stat-value" style="color:var(--fs-offline);">@_providers.Count(p => p.Status == "Offline")</div>
+            </div>
+            <div class="fs-card">
+                <div class="fs-stat-label">Offline Cost / Txn</div>
+                <div class="fs-stat-value" style="color:var(--fs-primary-dark);">@FormatCurrency(OfflineCostCents())</div>
+            </div>
+        </div>
+
+        <div class="fs-card fs-demo-widget">
+            <FailoverDemoWidget />
+        </div>
+
+        <div class="fs-dashboard-grid">
+            <div>
+                <div class="fs-section-header">
+                    <span class="fs-section-title">Provider Status</span>
+                    <a class="fs-link" href="providers">View all providers &rarr;</a>
+                </div>
+                <div class="fs-provider-cards">
+                    @foreach (var provider in _providers.Take(6))
+                    {
+                        <div class="fs-card fs-provider-card">
+                            <div class="fs-provider-card-top">
+                                <div>
+                                    <div class="fs-provider-name">@provider.Name</div>
+                                    <div class="fs-provider-network">@provider.ProviderType</div>
+                                </div>
+                                <span class="fs-badge @BadgeClass(provider.Status)">@provider.Status</span>
+                            </div>
+                            <div class="fs-provider-meta">
+                                <span>Priority @provider.Priority</span>
+                                <span>@FormatCurrency(provider.CostPerTransactionCents)/txn</span>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <div>
+                <div class="fs-section-header">
+                    <span class="fs-section-title">Recent Incidents</span>
+                    <a class="fs-link" href="incidents">View all &rarr;</a>
+                </div>
+                <div class="fs-card">
+                    @if (!_incidents.Any())
+                    {
+                        <p style="color:var(--fs-text-muted); font-size:0.85rem;">No incidents recorded yet.</p>
+                    }
+                    else
+                    {
+                        @foreach (var incident in _incidents.OrderByDescending(i => i.StartedAt).Take(5))
+                        {
+                            <div class="fs-incident-item">
+                                <div class="fs-incident-top">
+                                    <span class="fs-incident-provider">@ProviderName(incident.ProviderId)</span>
+                                    <span class="fs-badge @(incident.IsOpen ? "fs-badge-offline" : "fs-badge-healthy")">
+                                        @(incident.IsOpen ? "Ongoing" : "Resolved")
+                                    </span>
+                                </div>
+                                <div class="fs-incident-reason">@incident.Reason</div>
+                                <div class="fs-incident-date">@incident.StartedAt.ToLocalTime().ToString("d MMM, h:mm tt")</div>
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private List<ProviderDto> _providers = new();
+    private List<IncidentDto> _incidents = new();
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _providers = await Api.GetProvidersAsync();
+        _incidents = await Api.GetIncidentsAsync();
+        _loading = false;
+    }
+
+    private string ProviderName(Guid providerId) => _providers.FirstOrDefault(p => p.Id == providerId)?.Name ?? "Unknown";
+    private int OfflineCostCents() => _providers.Where(p => p.Status == "Offline").Sum(p => p.CostPerTransactionCents);
+    private string FormatCurrency(int cents) => $"N${cents / 100.0:0.00}";
+    private string BadgeClass(string status) => status switch
+    {
+        "Healthy" => "fs-badge-healthy",
+        "Warning" => "fs-badge-warning",
+        "Offline" => "fs-badge-offline",
+        _ => ""
+    };
+}

@@ -1,0 +1,153 @@
+﻿@inject Failsafe.Web.Services.FailsafeApiClient Api
+
+<div class="fs-card fs-demo-widget">
+    <div class="fs-section-title" style="margin-bottom:0.75rem;">Live Failover Demonstration</div>
+
+    <div class="fs-demo-controls">
+        <select class="fs-select" @bind="_selectedNetwork">
+            <option value="Visa">Visa</option>
+            <option value="Mastercard">Mastercard</option>
+            <option value="PayPal">PayPal</option>
+            <option value="EFT">EFT</option>
+            <option value="MobileMoney">Mobile Money</option>
+        </select>
+
+        <button class="fs-btn fs-btn-primary" @onclick="RouteTransaction" disabled="@_routing">
+            @(_routing ? "Routing..." : "Route Transaction")
+        </button>
+
+        <AuthorizeView Roles="Admin" Context="adminContext">
+            <Authorized>
+                @if (_lastResult?.Candidates.Count > 0)
+                {
+                    <span style="color:var(--fs-text-muted); font-size:0.8rem; margin-left:0.5rem;">Simulate on:</span>
+                    <select class="fs-select" @bind="_simulateTargetId">
+                        @foreach (var c in _lastResult.Candidates)
+                        {
+                            <option value="@c.Id">@c.Name</option>
+                        }
+                    </select>
+                    <button class="fs-btn fs-btn-danger" @onclick="SimulateFailure" disabled="@_simulating">Simulate Failure</button>
+                    <button class="fs-btn fs-btn-success" @onclick="SimulateRecovery" disabled="@_simulating">Simulate Recovery</button>
+                }
+            </Authorized>
+        </AuthorizeView>
+    </div>
+
+    @if (_notAvailable)
+    {
+        <div class="fs-route-result" style="border-color:var(--fs-offline);">
+            <p style="color:var(--fs-offline); font-weight:600; margin:0;">
+                No available @_selectedNetwork provider — all providers for this network are Offline.
+            </p>
+        </div>
+    }
+    else if (_lastResult is not null)
+    {
+        <div class="fs-route-result">
+            <div class="fs-route-selected" style="color:var(--fs-healthy);">
+                &rarr; Routed to: @_lastResult.SelectedProviderName
+            </div>
+            @foreach (var candidate in _lastResult.Candidates)
+            {
+                <div class="fs-candidate-row @(candidate.Selected ? "selected" : "")">
+                    <span>@candidate.Name (Priority @candidate.Priority)</span>
+                    <span class="fs-badge @BadgeClass(candidate.Status)">
+                        @candidate.Status
+                        @if (!candidate.Selected)
+                        {
+                            <span class="fs-candidate-skip"> — skipped</span>
+                        }
+                    </span>
+                </div>
+            }
+        </div>
+    }
+    @if (_statusMessage is not null)
+    {
+        <p style="color:var(--fs-text-muted); font-size:0.8rem; margin-top:0.5rem;">@_statusMessage</p>
+    }
+</div>
+
+@code {
+    private string _selectedNetwork = "Visa";
+    private RouteResultDto? _lastResult;
+    private bool _notAvailable = false;
+    private bool _routing = false;
+    private bool _simulating = false;
+    private Guid _simulateTargetId;
+    private string? _statusMessage;
+
+    private async Task RouteTransaction()
+    {
+        _routing = true;
+        _statusMessage = null;
+        try
+        {
+            _lastResult = await Api.RouteTransactionAsync(_selectedNetwork);
+            _notAvailable = _lastResult is null;
+            if (_lastResult?.Candidates.Count > 0 && _simulateTargetId == Guid.Empty)
+            {
+                _simulateTargetId = _lastResult.Candidates[0].Id;
+            }
+        }
+        catch (Exception ex)
+        {
+            // Surface the error to the UI for easier debugging and log to the console
+            Console.WriteLine($"[DIAG] RouteTransaction failed: {ex}");
+            _statusMessage = $"Failed to route transaction: {ex.Message}";
+        }
+        finally
+        {
+            _routing = false;
+        }
+    }
+
+    private async Task SimulateFailure()
+    {
+        if (_simulateTargetId == Guid.Empty) return;
+        _simulating = true;
+        try
+        {
+            await Api.SimulateFailureAsync(_simulateTargetId);
+            _statusMessage = "Injected failures — status updates within 15 seconds. Re-run 'Route Transaction' shortly to see the effect.";
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[DIAG] SimulateFailure failed: {ex}");
+            _statusMessage = $"Failed to simulate failure: {ex.Message}";
+        }
+        finally
+        {
+            _simulating = false;
+        }
+    }
+
+    private async Task SimulateRecovery()
+    {
+        if (_simulateTargetId == Guid.Empty) return;
+        _simulating = true;
+        try
+        {
+            await Api.SimulateRecoveryAsync(_simulateTargetId);
+            _statusMessage = "Injected successes — status updates within 15 seconds.";
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[DIAG] SimulateRecovery failed: {ex}");
+            _statusMessage = $"Failed to simulate recovery: {ex.Message}";
+        }
+        finally
+        {
+            _simulating = false;
+        }
+    }
+
+    private string BadgeClass(string status) => status switch
+    {
+        "Healthy" => "fs-badge-healthy",
+        "Warning" => "fs-badge-warning",
+        "Offline" => "fs-badge-offline",
+        _ => ""
+    };
+}

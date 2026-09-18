@@ -1,0 +1,11 @@
+﻿@inject NavigationManager NavigationManager
+
+@code {
+    protected override void OnInitialized()
+    {
+        // A real, full navigation (not Blazor's client-side routing) to
+        // our actual /login endpoint, which triggers the genuine OIDC
+        // challenge to Keycloak.
+        NavigationManager.NavigateTo("/login", forceLoad: true);
+    }
+}
