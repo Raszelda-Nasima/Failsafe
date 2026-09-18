@@ -1,0 +1,25 @@
+﻿<span class="fs-network-badge @CssClass">@Label</span>
+
+@code {
+    [Parameter] public string ProviderType { get; set; } = "";
+
+    private string CssClass => ProviderType.ToLower() switch
+    {
+        "visa" => "fs-network-visa",
+        "mastercard" => "fs-network-mastercard",
+        "paypal" => "fs-network-paypal",
+        "eft" => "fs-network-eft",
+        "mobilemoney" => "fs-network-mobilemoney",
+        _ => ""
+    };
+
+    private string Label => ProviderType.ToLower() switch
+    {
+        "visa" => "VISA",
+        "mastercard" => "MC",
+        "paypal" => "PP",
+        "eft" => "EFT",
+        "mobilemoney" => "MM",
+        _ => ProviderType.ToUpper()
+    };
+}
