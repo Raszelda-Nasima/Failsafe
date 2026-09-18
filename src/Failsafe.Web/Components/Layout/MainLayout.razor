@@ -1,23 +1,154 @@
 ﻿@inherits LayoutComponentBase
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Authentication
+@inject Failsafe.Web.Services.CurrentUserTokenProvider TokenProvider
+@inject IHttpContextAccessor HttpContextAccessor
+@inject NavigationManager NavigationManager
 
-<div class="page">
-    <div class="sidebar">
-        <NavMenu />
-    </div>
-
-    <main>
-        <div class="top-row px-4">
-            <a href="https://learn.microsoft.com/aspnet/core/" target="_blank">About</a>
+<div class="fs-shell @(_isDark ? "dark" : "") @(_collapsed ? "collapsed" : "")">
+    <aside class="fs-sidebar">
+        <div class="fs-logo">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--fs-primary)" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>
+            @if (!_collapsed)
+            {
+                <span>Failsafe</span>
+            }
+            <button class="fs-collapse-btn" @onclick="ToggleCollapse" title="Collapse sidebar">@(_collapsed ? "»" : "«")</button>
         </div>
 
-        <article class="content px-4">
+        <nav class="fs-nav">
+            <NavLink class="fs-nav-item" href="dashboard" Match="NavLinkMatch.All">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /></svg>
+                @if (!_collapsed)
+                {
+                    <span>Dashboard</span>
+                }
+            </NavLink>
+            <NavLink class="fs-nav-item" href="providers">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2" /><polyline points="2 17 12 22 22 17" /></svg>
+                @if (!_collapsed)
+                {
+                    <span>Providers</span>
+                }
+            </NavLink>
+            <NavLink class="fs-nav-item" href="incidents">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /></svg>
+                @if (!_collapsed)
+                {
+                    <span>Incidents</span>
+                }
+            </NavLink>
+            <NavLink class="fs-nav-item" href="reports">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" /></svg>
+                @if (!_collapsed)
+                {
+                    <span>Reports</span>
+                }
+            </NavLink>
+        </nav>
+
+        <!-- Profile moved to the top bar (right). Only the theme toggle
+             stays here now, per the design's "SideBar" pattern where the
+             sidebar's own footer holds app-level controls, not the
+             user's identity block. -->
+        <div class="fs-sidebar-bottom">
+            <button class="fs-theme-toggle" @onclick="ToggleTheme">
+                @if (_collapsed)
+                {
+                    <span>@(_isDark ? "☀" : "🌙")</span>
+                }
+                else
+                {
+
+                    <span>@(_isDark ? "Light mode" : "Dark mode")</span>
+                }
+            </button>
+        </div>
+    </aside>
+
+    <div style="flex:1; display:flex; flex-direction:column; min-width:0;">
+        <!-- Persistent top bar: greeting (left), functional search +
+             profile dropdown (right). Every element here does something
+             real — the search genuinely navigates to a filtered
+             Providers list; there's no notification bell or decorative
+             button with nothing behind it. -->
+        <header class="fs-topbar">
+            <AuthorizeView>
+                <Authorized>
+                    <div>
+                        <div class="fs-topbar-greeting">Welcome, @GetFirstName(context.User) 👋</div>
+                        <div class="fs-topbar-subtitle">Here's your payment infrastructure overview</div>
+                    </div>
+
+                    <div class="fs-topbar-right">
+                        <div class="fs-search">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
+                            <input placeholder="Search providers..." @bind="_searchTerm" @onkeydown="HandleSearchKeyDown" />
+                        </div>
+
+                        <button class="fs-user-btn @(_dropdownOpen ? "open" : "")" @onclick="ToggleDropdown">
+                            <div class="fs-avatar">@GetInitials(context.User)</div>
+                        </button>
+
+                        @if (_dropdownOpen)
+                        {
+                            <div class="fs-dropdown fs-dropdown-topbar">
+                                <div class="fs-dropdown-header">
+                                    <div style="font-size:0.85rem; font-weight:600;">@GetDisplayName(context.User)</div>
+                                    <div class="fs-user-role">@GetRole(context.User)</div>
+                                </div>
+                                <a class="fs-dropdown-item" href="/logout" data-enhance="false">Sign out</a>
+                            </div>
+                        }
+                    </div>
+                </Authorized>
+            </AuthorizeView>
+        </header>
+
+        <main class="fs-main">
             @Body
-        </article>
-    </main>
+        </main>
+    </div>
 </div>
 
-<div id="blazor-error-ui" data-nosnippet>
-    An unhandled error has occurred.
-    <a href="." class="reload">Reload</a>
-    <span class="dismiss">🗙</span>
-</div>
+@code {
+    private bool _isDark = false;
+    private bool _dropdownOpen = false;
+    private bool _collapsed = false;
+    private string _searchTerm = "";
+
+    private void ToggleTheme() => _isDark = !_isDark;
+    private void ToggleDropdown() => _dropdownOpen = !_dropdownOpen;
+    private void ToggleCollapse() => _collapsed = !_collapsed;
+
+    private void HandleSearchKeyDown(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(_searchTerm))
+        {
+            // A real navigation, not a decorative box — lands on the
+            // Providers page with the term pre-applied to its own
+            // search/filter, built in the next step.
+            NavigationManager.NavigateTo($"/providers?search={Uri.EscapeDataString(_searchTerm)}");
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var httpContext = HttpContextAccessor.HttpContext;
+        if (httpContext is not null)
+        {
+            TokenProvider.AccessToken = await httpContext.GetTokenAsync("access_token");
+        }
+    }
+
+    private string GetDisplayName(ClaimsPrincipal user) =>
+        user.FindFirst("preferred_username")?.Value ?? user.Identity?.Name ?? "Unknown";
+    private string GetFirstName(ClaimsPrincipal user) => GetDisplayName(user).Split('.', ' ')[0];
+    private string GetRole(ClaimsPrincipal user) => user.IsInRole("Admin") ? "Admin" : "User";
+    private string GetInitials(ClaimsPrincipal user)
+    {
+        var name = GetDisplayName(user);
+        var parts = name.Split('.', ' ');
+        return parts.Length >= 2 ? $"{parts[0][0]}{parts[1][0]}".ToUpper() : name.Length >= 2 ? name[..2].ToUpper() : name.ToUpper();
+    }
+}

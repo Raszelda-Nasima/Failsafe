@@ -11,6 +11,25 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
+// Required for FailsafeApiClient to access the current request's
+// authentication cookie/tokens from within a scoped service.
+builder.Services.AddHttpContextAccessor();
+
+builder.Services.AddScoped<Failsafe.Web.Services.CurrentUserTokenProvider>();
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddCascadingAuthenticationState();
+// Register the token handler used by the typed HttpClient to attach
+// the current user's access token to outgoing requests.
+builder.Services.AddTransient<Failsafe.Web.Services.TokenMessageHandler>();
+
+
+// Typed HttpClient pointed at the API. Scoped lifetime matches
+// IHttpContextAccessor's own scoping, so both align with one circuit/request.
+builder.Services.AddHttpClient<Failsafe.Web.Services.FailsafeApiClient>(client =>
+{
+    client.BaseAddress = new Uri("http://localhost:5171/");
+}).AddHttpMessageHandler<Failsafe.Web.Services.TokenMessageHandler>();
+
 // Authentication: a cookie holds the local session once Keycloak confirms
 // identity, and OpenID Connect performs the actual authentication against
 // Keycloak using the standard Authorization Code flow. This client is
@@ -82,8 +101,6 @@ if (!app.Environment.IsDevelopment())
     app.UseHsts();
 }
 
-app.UseHttpsRedirection();
-
 // Authentication must run before Authorization: a request's identity has
 // to be established before any role/policy check against that identity
 // can be evaluated.
@@ -104,8 +121,12 @@ app.MapGet("/login", (string? redirectUri) =>
         new AuthenticationProperties { RedirectUri = redirectUri ?? "/" },
         [OpenIdConnectDefaults.AuthenticationScheme]));
 
-// Clears both the local cookie session and the Keycloak-side session.
-app.MapPost("/logout", () =>
+// GET rather than POST: simplifies the logout link to a plain <a> tag
+// without needing Blazor's antiforgery-token plumbing for a form POST.
+// A reasonable simplification for an internal ops tool under time
+// constraints — a public-facing consumer app would keep this as a
+// POST with CSRF protection.
+app.MapGet("/logout", () =>
     Results.SignOut(
         new AuthenticationProperties { RedirectUri = "/" },
         [CookieAuthenticationDefaults.AuthenticationScheme, OpenIdConnectDefaults.AuthenticationScheme]));

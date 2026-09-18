@@ -1,4 +1,5 @@
 ﻿using Failsafe.Application.Interfaces;
+using Failsafe.Domain.Entities;
 using Failsafe.Domain.Enums;
 using Failsafe.Domain.Services;
 
@@ -49,5 +50,41 @@ public class FailoverService
         }
 
         return _selector.SelectProvider(candidates);
+    }
+
+    /// <summary>
+    /// Same selection logic as SelectActiveProviderAsync, but also returns
+    /// every candidate considered with its status — lets the caller show
+    /// WHY a given provider was chosen (or skipped), for demo/audit purposes.
+    /// </summary>
+    public async Task<(PaymentProvider? Selected, List<object> Candidates)> SelectActiveProviderWithCandidatesAsync(
+        ProviderType requestedType, CancellationToken ct = default)
+    {
+        var enabledProviders = await _providers.GetEnabledOrderedByPriorityAsync(ct);
+        var matchingProviders = enabledProviders.Where(p => p.ProviderType == requestedType).ToList();
+
+        var candidates = new List<ProviderCandidate>();
+        foreach (var provider in matchingProviders)
+        {
+            var recentResults = await _healthChecks.GetRecentByProviderIdAsync(provider.Id, count: 20, ct);
+            var status = _healthEvaluator.Evaluate(recentResults);
+            candidates.Add(new ProviderCandidate(provider, status));
+        }
+
+        var selected = _selector.SelectProvider(candidates);
+
+        var candidateSummaries = candidates
+            .OrderBy(c => c.Provider.Priority)
+            .Select(c => (object)new
+            {
+                c.Provider.Id,
+                c.Provider.Name,
+                c.Provider.Priority,
+                Status = c.Status.ToString(),
+                Selected = selected is not null && c.Provider.Id == selected.Id
+            })
+            .ToList();
+
+        return (selected, candidateSummaries);
     }
 }
