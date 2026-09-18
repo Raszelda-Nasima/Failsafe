@@ -14,7 +14,9 @@ public class PaymentProviderConfiguration : IEntityTypeConfiguration<PaymentProv
         builder.Property(p => p.Name).IsRequired().HasMaxLength(100);
         builder.HasIndex(p => p.Name).IsUnique();
 
-        // Readable string in the DB, not a magic number.
         builder.Property(p => p.ProviderType).HasConversion<string>().HasMaxLength(20);
+
+        builder.Property(p => p.CreatedByUserId).IsRequired().HasMaxLength(100);
+        builder.Property(p => p.CreatedByName).IsRequired().HasMaxLength(150);
     }
 }

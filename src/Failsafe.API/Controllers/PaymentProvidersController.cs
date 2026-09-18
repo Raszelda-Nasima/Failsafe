@@ -19,14 +19,20 @@ public class PaymentProvidersController : ControllerBase
     private readonly ProviderService _providerService;
     public PaymentProvidersController(ProviderService providerService) => _providerService = providerService;
 
-    /// <summary>
-    /// Registers a new provider. Restricted to Admins.
+    //// <summary>
+    /// Registers a new provider. Restricted to Admins. Captures the acting
+    /// Admin's identity from their JWT claims for the CreatedBy audit trail —
+    /// "preferred_username" is Keycloak's standard human-readable username
+    /// claim; "sub" is the stable unique subject identifier.
     /// </summary>
     [HttpPost]
     [Authorize(Policy = "AdminOnly")]
     public async Task<IActionResult> Register(CreateProviderRequest request, CancellationToken ct)
     {
-        var result = await _providerService.RegisterAsync(request, ct);
+        var createdByUserId = User.FindFirst("sub")?.Value ?? "unknown";
+        var createdByName = User.FindFirst("preferred_username")?.Value ?? User.Identity?.Name ?? "Unknown";
+
+        var result = await _providerService.RegisterAsync(request, createdByUserId, createdByName, ct);
         return CreatedAtAction(nameof(GetById), new { id = result.Id }, result);
     }
 
@@ -73,29 +79,40 @@ public class PaymentProvidersController : ControllerBase
     }
 
     /// <summary>
-    /// Returns which provider is currently selected to handle a
-    /// transaction on the given network, or 503 if none are available.
+    /// Returns which provider is currently selected to handle a transaction
+    /// on the given network, alongside every candidate considered and its
+    /// status — so the UI (and a live demo) can show WHY that provider was
+    /// chosen, not just the final answer.
     /// </summary>
     [HttpGet("active")]
     public async Task<IActionResult> GetActiveProvider(
-        [FromQuery] string network,
-        [FromServices] FailoverService failoverService,
-        CancellationToken ct)
+    [FromQuery] string network,
+    [FromServices] FailoverService failoverService,
+    CancellationToken ct)
     {
         if (!Enum.TryParse<Failsafe.Domain.Enums.ProviderType>(network, ignoreCase: true, out var providerType))
         {
             return BadRequest(new { Message = $"Unknown network '{network}'. Valid values: {string.Join(", ", Enum.GetNames<Failsafe.Domain.Enums.ProviderType>())}" });
         }
 
-        var provider = await failoverService.SelectActiveProviderAsync(providerType, ct);
+        var (selected, candidates) = await failoverService.SelectActiveProviderWithCandidatesAsync(providerType, ct);
 
-        if (provider is null)
+        if (selected is null)
         {
-            return StatusCode(StatusCodes.Status503ServiceUnavailable,
-                new { Message = $"No available {providerType} provider — all configured providers for this network are Offline." });
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new
+            {
+                Message = $"No available {providerType} provider — all configured providers for this network are Offline.",
+                Candidates = candidates
+            });
         }
 
-        return Ok(new { provider.Id, provider.Name, provider.ProviderType });
+        return Ok(new
+        {
+            SelectedProviderId = selected.Id,
+            SelectedProviderName = selected.Name,
+            Network = providerType.ToString(),
+            Candidates = candidates
+        });
     }
     /// <summary>
     /// Groups enabled providers by payment network and reports whether real

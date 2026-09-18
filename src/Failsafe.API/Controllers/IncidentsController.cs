@@ -1,14 +1,13 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Failsafe.Application.Interfaces;
+using Failsafe.Application.Providers;
 
 namespace Failsafe.API.Controllers;
 
 /// <summary>
-/// Read-only access to incident history. Incidents are exclusively
-/// auto-created and auto-resolved by ProviderHealthCheckService based on
-/// failure-rate thresholds — there is no endpoint to manually create one,
-/// since a human never "opens" an incident in this system's design.
+/// Read-only access to incident history and analytics. Incidents are
+/// exclusively auto-created/resolved by ProviderHealthCheckService.
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
@@ -18,19 +17,10 @@ public class IncidentsController : ControllerBase
     private readonly IIncidentRepository _incidents;
     public IncidentsController(IIncidentRepository incidents) => _incidents = incidents;
 
-    /// <summary>
-    /// Returns every incident, resolved or still open, most useful for
-    /// the Incidents page's full history table.
-    /// </summary>
     [HttpGet]
     public async Task<IActionResult> GetAll(CancellationToken ct)
     {
         var incidents = await _incidents.GetAllAsync(ct);
-
-        // Mapped inline rather than via a dedicated DTO/service — this is
-        // a simple, read-only projection with no business logic beyond
-        // exposing the entity's own fields, so a full Application-layer
-        // service would be ceremony without benefit here.
         var response = incidents.Select(i => new
         {
             i.Id,
@@ -41,18 +31,18 @@ public class IncidentsController : ControllerBase
             IsOpen = !i.ResolvedAt.HasValue,
             DurationSeconds = i.Duration?.TotalSeconds
         });
-
         return Ok(response);
     }
 
     /// <summary>
-    /// Returns a summary of incident activity for the current calendar
-    /// month — total incidents, still-open count, resolved count, and
-    /// average resolution time. Pure aggregation over existing Incident
-    /// data; feeds the Dashboard's monthly roundup panel.
+    /// Full monthly analytics roundup: incident counts, resolution rate,
+    /// total downtime, incidents grouped by provider, current provider
+    /// health breakdown, and cost-per-provider — feeds the Monthly
+    /// Roundup page's cards, bars, and donut chart.
     /// </summary>
     [HttpGet("summary")]
-    public async Task<IActionResult> GetMonthlySummary(CancellationToken ct)
+    public async Task<IActionResult> GetMonthlySummary(
+        [FromServices] ProviderService providerService, CancellationToken ct)
     {
         var incidents = await _incidents.GetAllAsync(ct);
         var now = DateTime.UtcNow;
@@ -62,21 +52,60 @@ public class IncidentsController : ControllerBase
             .ToList();
 
         var resolved = thisMonth.Where(i => i.ResolvedAt.HasValue).ToList();
+        var openCount = thisMonth.Count - resolved.Count;
 
-        // Null when nothing has resolved yet this month, rather than 0 —
-        // 0 would misleadingly suggest instant resolutions, when the
-        // truth is there's simply no data to average yet.
         double? avgResolutionMinutes = resolved.Count > 0
             ? resolved.Average(i => i.Duration!.Value.TotalMinutes)
             : null;
+
+        // Still-open incidents count time elapsed so far toward downtime,
+        // since they're actively contributing to it right now.
+        var totalDowntimeMinutes = thisMonth.Sum(i =>
+            (i.ResolvedAt ?? now).Subtract(i.StartedAt).TotalMinutes);
+
+        var providers = await providerService.GetAllAsync(ct);
+        var providerLookup = providers.ToDictionary(p => p.Id, p => p.Name);
+
+        var incidentsByProvider = thisMonth
+            .GroupBy(i => providerLookup.GetValueOrDefault(i.ProviderId, "Unknown"))
+            .Select(g => new { Provider = g.Key, Count = g.Count() })
+            .OrderByDescending(x => x.Count)
+            .ToList();
+
+        var healthBreakdown = new
+        {
+            Healthy = providers.Count(p => p.Status == "Healthy"),
+            Warning = providers.Count(p => p.Status == "Warning"),
+            Offline = providers.Count(p => p.Status == "Offline")
+        };
+
+        var enabledProviders = providers.Where(p => p.Enabled).ToList();
+        var costByProvider = enabledProviders
+            .Select(p => new { p.Name, p.CostPerTransactionCents })
+            .OrderByDescending(p => p.CostPerTransactionCents)
+            .ToList();
+
+        var averageCostPerTransactionCents = enabledProviders.Count > 0
+            ? Math.Round(enabledProviders.Average(p => p.CostPerTransactionCents), 2)
+            : 0;
+
+        var resolutionRatePercent = thisMonth.Count > 0
+            ? Math.Round((double)resolved.Count / thisMonth.Count * 100, 0)
+            : 0;
 
         return Ok(new
         {
             Month = now.ToString("MMMM yyyy"),
             TotalIncidents = thisMonth.Count,
-            StillOpen = thisMonth.Count(i => !i.ResolvedAt.HasValue),
-            Resolved = resolved.Count,
-            AverageResolutionMinutes = avgResolutionMinutes
+            OpenIncidents = openCount,
+            ResolvedIncidents = resolved.Count,
+            ResolutionRatePercent = resolutionRatePercent,
+            TotalDowntimeMinutes = Math.Round(totalDowntimeMinutes, 0),
+            AverageResolutionMinutes = avgResolutionMinutes,
+            AverageCostPerTransactionCents = averageCostPerTransactionCents,
+            IncidentsByProvider = incidentsByProvider,
+            ProviderHealthBreakdown = healthBreakdown,
+            CostByProvider = costByProvider
         });
     }
 }

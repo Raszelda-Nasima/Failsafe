@@ -10,22 +10,24 @@ public class PaymentProvider
     public Guid Id { get; private set; }
     public string Name { get; private set; } = default!;
     public ProviderType ProviderType { get; private set; }
-
-    // Lower number = tried first during failover. An int, not an enum,
-    // since routing order needs to be freely reorderable by an Admin,
-    // not constrained to a small fixed set of named positions.
     public int Priority { get; private set; }
-
     public int CostPerTransactionCents { get; private set; }
-
-    // Allows an Admin to take a provider out of the routing pool entirely
-    // (e.g. for planned maintenance) without deleting its historical data.
     public bool Enabled { get; private set; }
+
+    // Audit trail: who registered this provider. Captured from the
+    // authenticated Admin's JWT claims at registration time — a genuine
+    // human action, unlike Incident creation, which is fully automated.
+    public string CreatedByUserId { get; private set; } = default!;
+    public string CreatedByName { get; private set; } = default!;
 
     private PaymentProvider() { } // required by EF Core
 
+    // createdByUserId/createdByName default to "system"/"System" so
+    // existing test call sites (which don't care about audit data) keep
+    // compiling unchanged — real registrations always pass explicit values.
     public static PaymentProvider Register(
-        string name, ProviderType providerType, int priority, int costPerTransactionCents)
+        string name, ProviderType providerType, int priority, int costPerTransactionCents,
+        string createdByUserId = "system", string createdByName = "System")
     {
         if (string.IsNullOrWhiteSpace(name))
             throw new ArgumentException("A payment provider must have a name.", nameof(name));
@@ -37,21 +39,14 @@ public class PaymentProvider
             ProviderType = providerType,
             Priority = priority,
             CostPerTransactionCents = costPerTransactionCents,
-            Enabled = true
+            Enabled = true,
+            CreatedByUserId = createdByUserId,
+            CreatedByName = createdByName
         };
-    } // <-- Register's closing brace, correctly placed here, not after ChangeCost
+    }
 
-    // Each independent concern gets its own method, same discipline as
-    // Service.ChangeOwnerTeam in OpsLens — no single invariant ties
-    // Priority and CostPerTransactionCents together, so they're not
-    // bundled into one "UpdateDetails" call.
     public void ChangePriority(int priority) => Priority = priority;
 
-    // Cost is a contractual, negotiated rate — editable to reflect real
-    // contract renegotiations, but every change is logged at the
-    // Application layer (see ProviderService.UpdateAsync) so there's a
-    // defensible answer to "who changed this and when," without needing
-    // a full audit-history table for a single field.
     public void ChangeCost(int costPerTransactionCents)
     {
         if (costPerTransactionCents < 0)
