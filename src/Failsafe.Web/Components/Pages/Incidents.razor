@@ -1,0 +1,129 @@
+﻿@page "/incidents"
+@attribute [Authorize]
+@inject Failsafe.Web.Services.FailsafeApiClient Api
+
+<PageTitle>Incidents</PageTitle>
+
+<div class="fs-page">
+    <div class="fs-page-header">
+        <div>
+            <h1 class="fs-page-title">Incidents</h1>
+            <p class="fs-page-subtitle">Automatically opened and resolved by continuous health monitoring — no incident here is manually created.</p>
+        </div>
+        <div class="fs-page-actions">
+            <!-- Filters are read-only lenses over the same GetIncidentsAsync
+                 result — no server round trip per filter change, since the
+                 dataset is small at MVP scale. -->
+            <select class="fs-select" @bind="_providerFilter">
+                <option value="">All Providers</option>
+                @foreach (var providerName in _providers.Select(p => p.Name).Distinct().OrderBy(n => n))
+                {
+                    <option value="@providerName">@providerName</option>
+                }
+            </select>
+            <select class="fs-select" @bind="_statusFilter">
+                <option value="">All</option>
+                <option value="open">Open</option>
+                <option value="resolved">Resolved</option>
+            </select>
+        </div>
+    </div>
+
+    @if (_loading)
+    {
+        <p style="color:var(--fs-text-dim);">Loading...</p>
+    }
+    else
+    {
+        <div class="fs-card" style="padding:0;">
+            <table class="fs-table">
+                <thead>
+                    <tr>
+                        <th>Provider</th>
+                        <th>Reason</th>
+                        <th>Started</th>
+                        <th>Resolved</th>
+                        <th>Duration</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var incident in FilteredIncidents())
+                    {
+                        <tr>
+                            <td style="font-weight:600;">
+                                <NetworkBadge ProviderType="@ProviderType(incident.ProviderId)" /> @ProviderName(incident.ProviderId)
+                            </td>
+                            <td style="color:var(--fs-text-dim);">@incident.Reason</td>
+                            <td>@incident.StartedAt.ToLocalTime().ToString("d MMM, h:mm tt")</td>
+                            <td>
+                                @(incident.ResolvedAt.HasValue
+                                    ? incident.ResolvedAt.Value.ToLocalTime().ToString("d MMM, h:mm tt")
+                                    : "—")
+                            </td>
+                            <td>@FormatDuration(incident)</td>
+                            <td>
+                                <span class="fs-badge @(incident.IsOpen ? "fs-badge-offline" : "fs-badge-healthy")">
+                                    @(incident.IsOpen ? "Ongoing" : "Resolved")
+                                </span>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            <div class="fs-pagination">
+                <span>Showing @FilteredIncidents().Count() of @_incidents.Count incidents</span>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private List<IncidentDto> _incidents = new();
+    private List<ProviderDto> _providers = new();
+    private bool _loading = true;
+
+    private string _providerFilter = "";
+    private string _statusFilter = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Both fetched up front: incidents carry only a ProviderId, so we
+        // need the provider list to resolve a display name and network
+        // badge — same lookup pattern already used on the Dashboard.
+        _incidents = await Api.GetIncidentsAsync();
+        _providers = await Api.GetProvidersAsync();
+        _loading = false;
+    }
+
+    private IEnumerable<IncidentDto> FilteredIncidents() => _incidents
+        .Where(i =>
+            (string.IsNullOrEmpty(_providerFilter) || ProviderName(i.ProviderId) == _providerFilter) &&
+            (string.IsNullOrEmpty(_statusFilter) ||
+                (_statusFilter == "open" && i.IsOpen) ||
+                (_statusFilter == "resolved" && !i.IsOpen)))
+        .OrderByDescending(i => i.StartedAt);
+
+    private string ProviderName(Guid providerId) =>
+        _providers.FirstOrDefault(p => p.Id == providerId)?.Name ?? "Unknown Provider";
+
+    private string ProviderType(Guid providerId) =>
+        _providers.FirstOrDefault(p => p.Id == providerId)?.ProviderType ?? "";
+
+    // Resolved incidents use the stored DurationSeconds from the API.
+    // Still-open incidents have no DurationSeconds yet (the API only
+    // computes it once ResolvedAt is set), so it's calculated live here
+    // against "now" — meaning an ongoing incident's shown duration keeps
+    // growing every time the page is reloaded, which is the correct,
+    // honest behavior for something still actively happening.
+    private string FormatDuration(IncidentDto incident)
+    {
+        var span = incident.DurationSeconds.HasValue
+            ? TimeSpan.FromSeconds(incident.DurationSeconds.Value)
+            : DateTime.UtcNow - incident.StartedAt;
+
+        return span.TotalHours >= 1
+            ? $"{(int)span.TotalHours}h {span.Minutes}m"
+            : $"{span.Minutes}m";
+    }
+}

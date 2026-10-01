@@ -1,0 +1,130 @@
+﻿@inject Failsafe.Web.Services.FailsafeApiClient Api
+
+<div class="fs-modal-backdrop" @onclick="OnClose">
+    <!-- Stops a click inside the modal from bubbling up and closing it —
+         only clicking the backdrop itself, or Cancel/X, should dismiss it. -->
+    <div class="fs-modal" @onclick:stopPropagation="true">
+        <div class="fs-modal-header">
+            <div>
+                <h3 class="fs-modal-title">@(IsEditing ? $"Edit: {Provider!.Name}" : "Register Provider")</h3>
+                <p class="fs-modal-subtitle">@(IsEditing ? "Update routing configuration" : "Add a new payment provider")</p>
+            </div>
+            <button class="fs-modal-close" @onclick="OnClose">&times;</button>
+        </div>
+
+        <div class="fs-form-group">
+            <label class="fs-form-label">Name</label>
+            <!-- Name and Network are immutable after registration — same
+                 reasoning as OpsLens's Service.Name/Environment: other
+                 records (HealthCheckResult, Incident) reference this
+                 provider by Id, and changing its identity after the fact
+                 would be confusing during an investigation. Shown
+                 read-only here, not omitted, so the context stays visible. -->
+            <input class="fs-form-input" value="@_name" disabled="@IsEditing"
+                   @oninput="@(e => _name = e.Value?.ToString() ?? "")" />
+        </div>
+
+        <div class="fs-form-group">
+            <label class="fs-form-label">Network</label>
+            <select class="fs-form-input" @bind="_providerType" disabled="@IsEditing">
+                <option value="Visa">Visa</option>
+                <option value="Mastercard">Mastercard</option>
+                <option value="PayPal">PayPal</option>
+                <option value="EFT">EFT</option>
+                <option value="MobileMoney">Mobile Money</option>
+            </select>
+        </div>
+
+        <div class="fs-form-group">
+            <label class="fs-form-label">Priority</label>
+            <input class="fs-form-input" type="number" min="0" value="@_priority"
+                   @oninput="@(e => _priority = int.TryParse(e.Value?.ToString(), out var v) ? v : 0)" />
+            <p class="fs-form-hint">Lower number is tried first during failover.</p>
+        </div>
+
+        <div class="fs-form-group">
+            <label class="fs-form-label">Cost per transaction (N$)</label>
+            <input class="fs-form-input" type="number" step="0.01" min="0" value="@_costDisplay"
+                   @oninput="@(e => _costDisplay = e.Value?.ToString() ?? "0")" />
+        </div>
+
+        @if (IsEditing)
+        {
+            <div class="fs-form-group" style="display:flex; align-items:center; gap:0.6rem;">
+                <label class="fs-toggle">
+                    <input type="checkbox" checked="@_enabled" @onchange="@(e => _enabled = (bool)e.Value!)" />
+                    <span class="fs-toggle-slider"></span>
+                </label>
+                <span class="fs-form-label" style="margin:0;">Enabled</span>
+            </div>
+        }
+
+        @if (_errorMessage is not null)
+        {
+            <p class="fs-form-error">@_errorMessage</p>
+        }
+
+        <div class="fs-modal-footer">
+            <button class="fs-btn fs-btn-secondary" @onclick="OnClose">Cancel</button>
+            <button class="fs-btn fs-btn-primary" @onclick="Save" disabled="@_saving">
+                @(_saving ? "Saving..." : IsEditing ? "Save Changes" : "Register")
+            </button>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public Failsafe.Web.Models.ProviderDto? Provider { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback OnSaved { get; set; }
+
+    private bool IsEditing => Provider is not null;
+
+    private string _name = "";
+    private string _providerType = "Visa";
+    private int _priority = 0;
+    private string _costDisplay = "0.00";
+    private bool _enabled = true;
+    private bool _saving = false;
+    private string? _errorMessage;
+
+    protected override void OnParametersSet()
+    {
+        // Pre-fills the form when editing; leaves it blank for a new
+        // registration. Runs on parameter changes, not just once, so
+        // opening the modal fresh for a different provider re-populates
+        // correctly rather than showing stale data from a previous edit.
+        if (Provider is not null)
+        {
+            _name = Provider.Name;
+            _providerType = Provider.ProviderType;
+            _priority = Provider.Priority;
+            _costDisplay = (Provider.CostPerTransactionCents / 100.0).ToString("0.00");
+            _enabled = Provider.Enabled;
+        }
+    }
+
+    private async Task Save()
+    {
+        _saving = true;
+        _errorMessage = null;
+
+        var costCents = (int)Math.Round(
+            double.TryParse(_costDisplay, out var cost) ? cost * 100 : 0);
+
+        var (success, error) = IsEditing
+            ? await Api.UpdateProviderAsync(Provider!.Id, _priority, costCents, _enabled)
+            : await Api.RegisterProviderAsync(_name, _providerType, _priority, costCents);
+
+        if (success)
+        {
+            await OnSaved.InvokeAsync();
+        }
+        else
+        {
+            _errorMessage = error ?? "Something went wrong. Please try again.";
+        }
+
+        _saving = false;
+    }
+}

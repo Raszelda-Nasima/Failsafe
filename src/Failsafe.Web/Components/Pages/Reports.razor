@@ -1,0 +1,105 @@
+﻿@page "/reports"
+@attribute [Authorize]
+@inject Failsafe.Web.Services.FailsafeApiClient Api
+@inject IJSRuntime JS
+
+<PageTitle>Reports</PageTitle>
+
+<div class="fs-page">
+    <div class="fs-page-header">
+        <div>
+            <h1 class="fs-page-title">Reports</h1>
+            <p class="fs-page-subtitle">@(_summary?.Month ?? "") monthly roundup</p>
+        </div>
+    </div>
+
+    @if (_loading)
+    {
+        <p style="color:var(--fs-text-dim);">Loading...</p>
+    }
+    else if (_summary is null)
+    {
+        <p>No data available.</p>
+    }
+    else
+    {
+        <div class="fs-stat-grid">
+            <div class="fs-card">
+                <div class="fs-stat-label">Total Incidents</div>
+                <div class="fs-stat-value">@_summary.TotalIncidents</div>
+            </div>
+            <div class="fs-card">
+                <div class="fs-stat-label">Open Incidents</div>
+                <div class="fs-stat-value" style="color:var(--fs-warning);">@_summary.OpenIncidents</div>
+            </div>
+            <div class="fs-card">
+                <div class="fs-stat-label">Resolution Rate</div>
+                <div class="fs-stat-value" style="color:var(--fs-healthy);">@_summary.ResolutionRatePercent%</div>
+            </div>
+            <div class="fs-card">
+                <div class="fs-stat-label">Total Downtime</div>
+                <div class="fs-stat-value">@FormatMinutes(_summary.TotalDowntimeMinutes)</div>
+            </div>
+        </div>
+
+        <div class="fs-dashboard-grid">
+            <div class="fs-card">
+                <div class="fs-section-title" style="margin-bottom:1rem;">Incidents by Provider</div>
+                <canvas id="incidentsByProviderChart" height="220"></canvas>
+            </div>
+            <div class="fs-card">
+                <div class="fs-section-title" style="margin-bottom:1rem;">Provider Health Breakdown</div>
+                <canvas id="healthBreakdownChart" height="220"></canvas>
+            </div>
+        </div>
+
+        <div class="fs-card" style="margin-top:1.25rem;">
+            <div class="fs-section-title" style="margin-bottom:1rem;">Cost per Transaction by Provider (NAD)</div>
+            <canvas id="costByProviderChart" height="180"></canvas>
+        </div>
+    }
+</div>
+
+@code {
+    private MonthlySummaryDto? _summary;
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _summary = await Api.GetMonthlySummaryAsync();
+        _loading = false;
+    }
+
+    // Charts are drawn AFTER the first render, not in OnInitializedAsync —
+    // the <canvas> elements don't exist in the DOM until Blazor has
+    // actually rendered the markup above. firstRender guards against
+    // redrawing on every subsequent re-render (e.g. a dropdown toggle
+    // elsewhere triggering a parent re-render), which would otherwise
+    // flicker or duplicate chart instances.
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && _summary is not null)
+        {
+            await JS.InvokeVoidAsync("renderBarChart",
+                "incidentsByProviderChart",
+                _summary.IncidentsByProvider.Select(x => x.Provider).ToArray(),
+                _summary.IncidentsByProvider.Select(x => x.Count).ToArray(),
+                "#6b84ff");
+
+            await JS.InvokeVoidAsync("renderDoughnutChart",
+                "healthBreakdownChart",
+                new[] { "Healthy", "Warning", "Offline" },
+                new[] { _summary.ProviderHealthBreakdown.Healthy, _summary.ProviderHealthBreakdown.Warning, _summary.ProviderHealthBreakdown.Offline },
+                new[] { "#0e8d5b", "#e2a000", "#c62828" });
+
+            await JS.InvokeVoidAsync("renderBarChart",
+                "costByProviderChart",
+                _summary.CostByProvider.Select(x => x.Name).ToArray(),
+                _summary.CostByProvider.Select(x => x.CostPerTransactionCents / 100.0).ToArray(),
+                "#0e8d5b");
+        }
+    }
+
+    private string FormatMinutes(double minutes) =>
+        minutes >= 60 ? $"{(int)(minutes / 60)}h {(int)(minutes % 60)}m" : $"{(int)minutes}m";
+}

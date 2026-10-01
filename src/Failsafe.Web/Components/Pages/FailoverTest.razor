@@ -1,0 +1,17 @@
+﻿@page "/failover-test"
+@attribute [Authorize(Roles = "Admin")]
+
+<PageTitle>Failover Test</PageTitle>
+
+<div class="fs-page">
+    <div class="fs-page-header">
+        <div>
+            <h1 class="fs-page-title">Failover Test</h1>
+            <p class="fs-page-subtitle">Demonstrate live routing and failover behavior</p>
+        </div>
+    </div>
+
+    <div class="fs-card">
+        <FailoverDemoWidget />
+    </div>
+</div>
