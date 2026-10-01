@@ -7,34 +7,23 @@ using System.Text.Json;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
-// Required for FailsafeApiClient to access the current request's
-// authentication cookie/tokens from within a scoped service.
+// Required for FailsafeApiClient / CurrentUserTokenProvider to access the
+// current request's authentication cookie/tokens from a scoped service.
 builder.Services.AddHttpContextAccessor();
-
 builder.Services.AddScoped<Failsafe.Web.Services.CurrentUserTokenProvider>();
-builder.Services.AddHttpContextAccessor();
-builder.Services.AddCascadingAuthenticationState();
-// Register the token handler used by the typed HttpClient to attach
-// the current user's access token to outgoing requests.
-builder.Services.AddTransient<Failsafe.Web.Services.TokenMessageHandler>();
-
-
-// Typed HttpClient pointed at the API. Scoped lifetime matches
-// IHttpContextAccessor's own scoping, so both align with one circuit/request.
 builder.Services.AddHttpClient<Failsafe.Web.Services.FailsafeApiClient>(client =>
 {
     client.BaseAddress = new Uri("http://localhost:5171/");
-}).AddHttpMessageHandler<Failsafe.Web.Services.TokenMessageHandler>();
+});
 
 // Authentication: a cookie holds the local session once Keycloak confirms
-// identity, and OpenID Connect performs the actual authentication against
-// Keycloak using the standard Authorization Code flow. This client is
-// confidential (holds a real client secret) because Blazor Server executes
-// entirely on the server; unlike a browser-executed SPA, there is no
+// identity, and OpenID Connect performs the actual authentication using
+// the Authorization Code flow. failsafe-web is a confidential client
+// (holds a real client secret) because Blazor Server executes entirely
+// on the server — unlike a browser-executed SPA, there is no
 // public-client/PKCE requirement here.
 builder.Services.AddAuthentication(options =>
 {
@@ -50,36 +39,46 @@ builder.Services.AddAuthentication(options =>
     options.ResponseType = "code";
     options.RequireHttpsMetadata = false; // local development only
 
-    // Persists the access token on the authentication session so it can
-    // later be attached to outgoing calls to the Failsafe API.
+    // Persists the access token on the authentication session so
+    // FailsafeApiClient can attach it to outgoing calls to the API.
     options.SaveTokens = true;
 
-    // Requests the "roles" scope from Keycloak so the realm role list is
-    // included in the returned claims.
+    // Requests the "roles" scope from Keycloak so realm roles are
+    // included in the returned token.
     options.Scope.Add("roles");
 
     options.Events = new OpenIdConnectEvents
     {
-        // Keycloak returns realm roles as a nested JSON object
-        // (realm_access.roles) rather than individual role claims. This
-        // flattens that structure into standard ClaimTypes.Role claims,
-        // which is what ASP.NET Core's [Authorize(Roles = "...")] and
-        // <AuthorizeView Roles="..."> both expect.
+        // Keycloak roles come in realm_access.roles on the access token.
+        // Decode the access token payload and map those roles to
+        // ClaimTypes.Role for Blazor authorization checks.
         OnTokenValidated = context =>
         {
-            var realmAccessClaim = context.Principal?.FindFirst("realm_access");
-            if (realmAccessClaim is not null)
+            var accessToken = context.TokenEndpointResponse?.AccessToken;
+            if (string.IsNullOrEmpty(accessToken))
             {
-                using var doc = JsonDocument.Parse(realmAccessClaim.Value);
-                if (doc.RootElement.TryGetProperty("roles", out var roles))
+                return Task.CompletedTask;
+            }
+
+            var payloadSegment = accessToken.Split('.')[1]
+                .Replace('-', '+')
+                .Replace('_', '/');
+            var padded = payloadSegment.PadRight(
+                payloadSegment.Length + (4 - payloadSegment.Length % 4) % 4,
+                '=');
+            var payloadJson = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(padded));
+
+            using var doc = JsonDocument.Parse(payloadJson);
+            if (doc.RootElement.TryGetProperty("realm_access", out var realmAccess) &&
+                realmAccess.TryGetProperty("roles", out var roles))
+            {
+                var identity = (ClaimsIdentity)context.Principal!.Identity!;
+                foreach (var role in roles.EnumerateArray())
                 {
-                    var identity = (ClaimsIdentity)context.Principal!.Identity!;
-                    foreach (var role in roles.EnumerateArray())
-                    {
-                        identity.AddClaim(new Claim(ClaimTypes.Role, role.GetString()!));
-                    }
+                    identity.AddClaim(new Claim(ClaimTypes.Role, role.GetString()!));
                 }
             }
+
             return Task.CompletedTask;
         }
     };
@@ -88,22 +87,19 @@ builder.Services.AddAuthentication(options =>
 builder.Services.AddAuthorization();
 
 // Makes the current authentication state available to every Razor
-// component in the tree via a cascading parameter, without each component
-// needing to resolve it manually.
+// component via a cascading parameter.
 builder.Services.AddCascadingAuthenticationState();
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error", createScopeForErrors: true);
     app.UseHsts();
 }
 
-// Authentication must run before Authorization: a request's identity has
-// to be established before any role/policy check against that identity
-// can be evaluated.
+// Order matters: Authentication (who are you?) before Authorization
+// (what are you allowed to do?), both before Antiforgery/routing.
 app.UseAuthentication();
 app.UseAuthorization();
 
@@ -113,19 +109,15 @@ app.MapStaticAssets();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
-// Triggers the OpenID Connect challenge, redirecting the browser to
-// Keycloak's login page. redirectUri controls where the user lands after
-// a successful login.
+// Triggers the OpenID Connect challenge, redirecting to Keycloak's login page.
 app.MapGet("/login", (string? redirectUri) =>
     Results.Challenge(
         new AuthenticationProperties { RedirectUri = redirectUri ?? "/" },
         [OpenIdConnectDefaults.AuthenticationScheme]));
 
-// GET rather than POST: simplifies the logout link to a plain <a> tag
-// without needing Blazor's antiforgery-token plumbing for a form POST.
-// A reasonable simplification for an internal ops tool under time
-// constraints — a public-facing consumer app would keep this as a
-// POST with CSRF protection.
+// GET rather than POST — simplifies the logout link to a plain <a> tag
+// without needing antiforgery-token plumbing for a form POST. A
+// reasonable simplification for an internal ops tool.
 app.MapGet("/logout", () =>
     Results.SignOut(
         new AuthenticationProperties { RedirectUri = "/" },
