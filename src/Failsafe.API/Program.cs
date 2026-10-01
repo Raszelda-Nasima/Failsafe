@@ -77,23 +77,24 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                         }
                     }
                 }
+
+                return Task.CompletedTask;
+            },
+            OnAuthenticationFailed = context =>
+            {
+                try
+                {
+                    var loggerFactory = context.HttpContext?.RequestServices.GetService(typeof(Microsoft.Extensions.Logging.ILoggerFactory)) as Microsoft.Extensions.Logging.ILoggerFactory;
+                    var logger = loggerFactory?.CreateLogger("JwtBearer") ?? Microsoft.Extensions.Logging.LoggerFactory.Create(builder => { }).CreateLogger("JwtBearer");
+                    logger.LogError(context.Exception, "JWT authentication failed while validating incoming token: {Message}", context.Exception?.Message);
+                }
+                catch
+                {
+                    // Swallow any logging errors to avoid masking the original failure.
+                }
+
                 return Task.CompletedTask;
             }
-        ,
-        OnAuthenticationFailed = context =>
-        {
-            try
-            {
-                var loggerFactory = context.HttpContext?.RequestServices.GetService(typeof(Microsoft.Extensions.Logging.ILoggerFactory)) as Microsoft.Extensions.Logging.ILoggerFactory;
-                var logger = loggerFactory?.CreateLogger("JwtBearer") ?? Microsoft.Extensions.Logging.LoggerFactory.Create(builder => {}).CreateLogger("JwtBearer");
-                logger.LogError(context.Exception, "JWT authentication failed while validating incoming token: {Message}", context.Exception?.Message);
-            }
-            catch
-            {
-                // Swallow any logging errors to avoid masking the original failure.
-            }
-            return Task.CompletedTask;
-        }
         };
     });
 

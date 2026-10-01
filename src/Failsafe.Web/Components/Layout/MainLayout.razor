@@ -45,12 +45,22 @@
                     <span>Reports</span>
                 }
             </NavLink>
+
+            <!-- Admin-only entry point for the live failover demonstration,
+                 kept off the Dashboard so the main screen stays clean. -->
+            <AuthorizeView Roles="Admin">
+                <Authorized>
+                    <NavLink class="fs-nav-item" href="failover-test">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z" /></svg>
+                        @if (!_collapsed)
+                        {
+                            <span>Failover Test</span>
+                        }
+                    </NavLink>
+                </Authorized>
+            </AuthorizeView>
         </nav>
 
-        <!-- Profile moved to the top bar (right). Only the theme toggle
-             stays here now, per the design's "SideBar" pattern where the
-             sidebar's own footer holds app-level controls, not the
-             user's identity block. -->
         <div class="fs-sidebar-bottom">
             <button class="fs-theme-toggle" @onclick="ToggleTheme">
                 @if (_collapsed)
@@ -67,27 +77,21 @@
     </aside>
 
     <div style="flex:1; display:flex; flex-direction:column; min-width:0;">
-        <!-- Persistent top bar: greeting (left), functional search +
-             profile dropdown (right). Every element here does something
-             real — the search genuinely navigates to a filtered
-             Providers list; there's no notification bell or decorative
-             button with nothing behind it. -->
+        <!-- Top bar: full width, controls pinned to the far right. The
+             welcome message has been removed entirely, so each page owns
+             its single heading and nothing is duplicated above it. -->
         <header class="fs-topbar">
             <AuthorizeView>
                 <Authorized>
-                    <div>
-                        <div class="fs-topbar-greeting">Welcome, @GetFirstName(context.User) 👋</div>
-                        <div class="fs-topbar-subtitle">Here's your payment infrastructure overview</div>
-                    </div>
-
                     <div class="fs-topbar-right">
                         <div class="fs-search">
                             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
                             <input placeholder="Search providers..." @bind="_searchTerm" @onkeydown="HandleSearchKeyDown" />
                         </div>
 
-                        <button class="fs-user-btn @(_dropdownOpen ? "open" : "")" @onclick="ToggleDropdown">
+                        <button class="fs-user-btn-topbar @(_dropdownOpen ? "open" : "")" @onclick="ToggleDropdown">
                             <div class="fs-avatar">@GetInitials(context.User)</div>
+                            <span class="fs-user-name">@GetDisplayName(context.User)</span>
                         </button>
 
                         @if (_dropdownOpen)
@@ -125,9 +129,6 @@
     {
         if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(_searchTerm))
         {
-            // A real navigation, not a decorative box — lands on the
-            // Providers page with the term pre-applied to its own
-            // search/filter, built in the next step.
             NavigationManager.NavigateTo($"/providers?search={Uri.EscapeDataString(_searchTerm)}");
         }
     }
@@ -143,7 +144,6 @@
 
     private string GetDisplayName(ClaimsPrincipal user) =>
         user.FindFirst("preferred_username")?.Value ?? user.Identity?.Name ?? "Unknown";
-    private string GetFirstName(ClaimsPrincipal user) => GetDisplayName(user).Split('.', ' ')[0];
     private string GetRole(ClaimsPrincipal user) => user.IsInRole("Admin") ? "Admin" : "User";
     private string GetInitials(ClaimsPrincipal user)
     {

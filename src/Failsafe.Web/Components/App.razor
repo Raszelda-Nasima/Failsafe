@@ -1,11 +1,12 @@
-﻿@rendermode InteractiveServer
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="js/charts.js"></script>
     <base href="/" />
     <link rel="stylesheet" href="css/theme.css" />
     <link rel="stylesheet" href="Failsafe.Web.styles.css" />
@@ -13,13 +14,20 @@
 </head>
 <body>
     <!--
-        Setting @@rendermode ONCE here, on <Routes>, applies InteractiveServer
-        to the ENTIRE routed component tree from the very first request —
-        every page and its layout are consistently interactive from the
-        start. This replaces per-page @@rendermode declarations entirely,
-        which is what caused the sidebar's inconsistent interactivity.
+        The 'rendermode' attribute is applied directly to the <Routes> tag
+        itself (not as a stray line elsewhere in the file) — this is what
+        actually activates InteractiveServer for the whole routed
+        component tree, from the very first request.
     -->
-    <Routes />
-    <script src="_framework/blazor.server.js"></script>
+    <Routes @rendermode="InteractiveServer" />
+
+    <!--
+        blazor.web.js, not blazor.server.js — this project uses the
+        unified "Blazor Web App" template, which requires this specific
+        script to correctly handle the static-to-interactive render
+        transition. blazor.server.js is the older, pre-.NET 8 script and
+        is incompatible with this template's render-mode model.
+    -->
+    <script src="_framework/blazor.web.js"></script>
 </body>
 </html>

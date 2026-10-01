@@ -1,0 +1,194 @@
+﻿@page "/providers"
+@attribute [Authorize]
+@inject Failsafe.Web.Services.FailsafeApiClient Api
+@inject NavigationManager NavigationManager
+@using Microsoft.AspNetCore.WebUtilities
+
+<PageTitle>Providers</PageTitle>
+
+<div class="fs-page">
+    <div class="fs-page-header">
+        <div>
+            <h1 class="fs-page-title">Providers</h1>
+            <p class="fs-page-subtitle">Manage payment providers and routing configuration</p>
+        </div>
+        <div class="fs-page-actions">
+            <div class="fs-search">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input placeholder="Search providers..." @bind="_searchTerm" @bind:event="oninput" />
+            </div>
+            <select class="fs-select" @bind="_networkFilter">
+                <option value="">All Networks</option>
+                <option value="Visa">Visa</option>
+                <option value="Mastercard">Mastercard</option>
+                <option value="PayPal">PayPal</option>
+                <option value="EFT">EFT</option>
+                <option value="MobileMoney">Mobile Money</option>
+            </select>
+            <select class="fs-select" @bind="_statusFilter">
+                <option value="">All Status</option>
+                <option value="Healthy">Healthy</option>
+                <option value="Warning">Warning</option>
+                <option value="Offline">Offline</option>
+            </select>
+
+            <!-- Register is Admin-only on the API — hiding it entirely for
+                 a User-role account avoids a confusing 403 on click. -->
+            <AuthorizeView Roles="Admin">
+                <Authorized>
+                    <button class="fs-btn fs-btn-primary" @onclick="OpenRegisterModal">+ Register Provider</button>
+                </Authorized>
+            </AuthorizeView>
+        </div>
+    </div>
+
+    @if (_loading)
+    {
+        <p style="color:var(--fs-text-dim);">Loading...</p>
+    }
+    else
+    {
+        <div class="fs-card" style="padding:0;">
+            <table class="fs-table">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Network</th>
+                        <th>Priority</th>
+                        <th>Cost / Txn (NAD)</th>
+                        <th>Status</th>
+                        <th>Enabled</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var provider in FilteredProviders())
+                    {
+                        <tr>
+                            <td style="font-weight:600;">
+                                <NetworkBadge ProviderType="@provider.ProviderType" /> @provider.Name
+                            </td>
+                            <td>@provider.ProviderType</td>
+                            <td>@provider.Priority</td>
+                            <td>N$@((provider.CostPerTransactionCents / 100.0).ToString("0.00"))</td>
+                            <td><span class="fs-badge @BadgeClass(provider.Status)">@provider.Status</span></td>
+                            <td>
+                                <!-- Per your instruction: no separate "Disable" button — the
+                                     toggle itself IS the enable/disable action, calling the
+                                     API's DisableAsync (via Update) directly on change. -->
+                                <label class="fs-toggle">
+                                    <input type="checkbox" checked="@provider.Enabled"
+                                           disabled="@(!_isAdmin)"
+                                           @onchange="@(e => ToggleEnabled(provider, (bool)e.Value!))" />
+                                    <span class="fs-toggle-slider"></span>
+                                </label>
+                            </td>
+                            <td class="fs-table-actions">
+                                <button class="fs-table-link" @onclick='() => NavigationManager.NavigateTo("/providers/" + provider.Id)'>View</button>
+                                <AuthorizeView Roles="Admin">
+                                    <Authorized>
+                                        <button class="fs-table-link" @onclick="() => OpenEditModal(provider)">Edit</button>
+                                    </Authorized>
+                                </AuthorizeView>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            <div class="fs-pagination">
+                <span>Showing @FilteredProviders().Count() of @_providers.Count</span>
+            </div>
+        </div>
+    }
+</div>
+
+@if (_showModal)
+{
+    <ProviderFormModal
+        Provider="@_editingProvider"
+        OnClose="CloseModal"
+        OnSaved="HandleSaved" />
+}
+
+@code {
+    private List<ProviderDto> _providers = new();
+    private bool _loading = true;
+    private bool _showModal = false;
+    private ProviderDto? _editingProvider = null;
+    private bool _isAdmin = false;
+
+    // Bound to the top-bar search box's ?search= query string, so
+    // arriving here from that box lands with the filter pre-applied.
+    private string _searchTerm = "";
+    private string _networkFilter = "";
+    private string _statusFilter = "";
+
+    [CascadingParameter] private Task<Microsoft.AspNetCore.Components.Authorization.AuthenticationState>? AuthState { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthState is not null)
+        {
+            var state = await AuthState;
+            _isAdmin = state.User.IsInRole("Admin");
+        }
+
+        var uri = NavigationManager.ToAbsoluteUri(NavigationManager.Uri);
+        if (QueryHelpers.ParseQuery(uri.Query).TryGetValue("search", out var search))
+        {
+            _searchTerm = search!;
+        }
+
+        await LoadProviders();
+    }
+
+    private async Task LoadProviders()
+    {
+        _loading = true;
+        _providers = await Api.GetProvidersAsync();
+        _loading = false;
+    }
+
+    // Filtering happens client-side over the already-fetched list — at
+    // MVP data volumes (a handful of providers) this is simpler than
+    // adding server-side query parameters, and avoids an extra round
+    // trip on every keystroke.
+    private IEnumerable<ProviderDto> FilteredProviders() => _providers.Where(p =>
+        (string.IsNullOrWhiteSpace(_searchTerm) || p.Name.Contains(_searchTerm, StringComparison.OrdinalIgnoreCase)) &&
+        (string.IsNullOrEmpty(_networkFilter) || p.ProviderType == _networkFilter) &&
+        (string.IsNullOrEmpty(_statusFilter) || p.Status == _statusFilter));
+
+    private async Task ToggleEnabled(ProviderDto provider, bool enabled)
+    {
+        await Api.UpdateProviderAsync(provider.Id, provider.Priority, provider.CostPerTransactionCents, enabled);
+        await LoadProviders();
+    }
+
+    private void OpenRegisterModal()
+    {
+        _editingProvider = null;
+        _showModal = true;
+    }
+
+    private void OpenEditModal(ProviderDto provider)
+    {
+        _editingProvider = provider;
+        _showModal = true;
+    }
+
+    private void CloseModal() => _showModal = false;
+
+    private async Task HandleSaved()
+    {
+        _showModal = false;
+        await LoadProviders();
+    }
+
+    private string BadgeClass(string status) => status switch
+    {
+        "Healthy" => "fs-badge-healthy",
+        "Warning" => "fs-badge-warning",
+        "Offline" => "fs-badge-offline",
+        _ => ""
+    };
+}
